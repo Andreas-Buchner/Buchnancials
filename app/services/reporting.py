@@ -48,7 +48,8 @@ def list_transactions_for_period(conn: sqlite3.Connection, start_date: str, end_
           t.created_at,
           t.updated_at,
           c.name AS category_name,
-          c.type AS category_type
+          c.type AS category_type,
+          c.color AS category_color
         FROM transactions t
         LEFT JOIN categories c ON c.id = t.category_id
         WHERE t.booking_date >= ? AND t.booking_date < ?
@@ -76,10 +77,12 @@ def attach_splits(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
           ts.transaction_id,
           ts.category_id,
           ts.amount,
+          ts.excluded,
           ts.created_at,
           ts.updated_at,
           c.name AS category_name,
-          c.type AS category_type
+          c.type AS category_type,
+          c.color AS category_color
         FROM transaction_splits ts
         LEFT JOIN categories c ON c.id = ts.category_id
         WHERE ts.transaction_id IN ({placeholders})
@@ -114,6 +117,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     "amount": float(split["amount"]),
                     "category_name": split.get("category_name"),
                     "category_type": split.get("category_type"),
+                    "excluded": bool(split.get("excluded")),
                 }
                 for split in split_items
             ]
@@ -123,10 +127,13 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     "amount": float(row["amount"]),
                     "category_name": row.get("category_name"),
                     "category_type": row.get("category_type"),
+                    "excluded": False,
                 }
             ]
 
         for component in components:
+            if component["excluded"]:
+                continue
             amount = float(component["amount"])
             if amount >= 0:
                 income += amount
@@ -157,7 +164,7 @@ def list_categories(conn: sqlite3.Connection, include_inactive: bool = True) -> 
     if include_inactive:
         rows = conn.execute(
             """
-            SELECT id, name, type, active
+            SELECT id, name, type, color, active
             FROM categories
             ORDER BY type, active DESC, name
             """
@@ -165,7 +172,7 @@ def list_categories(conn: sqlite3.Connection, include_inactive: bool = True) -> 
     else:
         rows = conn.execute(
             """
-            SELECT id, name, type, active
+            SELECT id, name, type, color, active
             FROM categories
             WHERE active = 1
             ORDER BY type, name
@@ -187,7 +194,8 @@ def build_grouped_transactions(conn: sqlite3.Connection) -> list[dict[str, Any]]
           t.category_id,
           t.excluded,
           c.name AS category_name,
-          c.type AS category_type
+          c.type AS category_type,
+          c.color AS category_color
         FROM transactions t
         LEFT JOIN categories c ON c.id = t.category_id
         ORDER BY t.booking_date DESC, t.id DESC

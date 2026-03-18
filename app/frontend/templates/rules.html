@@ -3,35 +3,67 @@
 {% block content %}
 <section class="panel">
   <h2>Regeln</h2>
-  <div class="rule-form-grid">
+  <div class="rule-form-grid rule-form-grid-top">
     <input type="text" id="rule-name" placeholder="Regelname" />
-    <select id="rule-field">
-      <option value="description">Beschreibung</option>
-      <option value="counterparty_name">Gegenpartei</option>
-      <option value="raw_text">Buchungstext (roh)</option>
-    </select>
-    <select id="rule-type">
-      <option value="contains">enthält</option>
-      <option value="equals">entspricht</option>
-      <option value="starts_with">beginnt mit</option>
-      <option value="regex">Muster (RegEx)</option>
-    </select>
-    <input type="text" id="rule-value" placeholder="Suchwert" />
-    <input type="text" id="rule-counterparty-filter" placeholder="Gegenpartei enthält (optional)" />
-    <select id="rule-amount-sign">
-      <option value="any">Betrag: alle</option>
-      <option value="negative">Betrag: nur Ausgaben</option>
-      <option value="positive">Betrag: nur Einnahmen</option>
+    <select id="rule-amount-sign" aria-label="Gilt für">
+      <option value="negative">Gilt für: Aufwände</option>
+      <option value="positive">Gilt für: Erträge</option>
     </select>
     <select id="rule-category"></select>
     <label class="inline-checkbox">
       <input type="checkbox" id="rule-exclude" />
-      Treffer ignorieren
+      Buchungen ignorieren
     </label>
+  </div>
+  <div class="rule-condition-builder">
+    <div class="rule-condition-card">
+      <p class="rule-condition-title">Bedingung 1</p>
+      <div class="rule-form-grid">
+        <select id="rule-field" aria-label="Bedingung 1 Feld">
+          <option value="description">Beschreibung</option>
+          <option value="counterparty_name">Auftraggeber</option>
+          <option value="raw_text">Rohtext</option>
+        </select>
+        <select id="rule-type" aria-label="Bedingung 1 Typ">
+          <option value="contains">enthält</option>
+          <option value="equals">entspricht</option>
+          <option value="starts_with">beginnt mit</option>
+          <option value="regex">Muster (RegEx)</option>
+        </select>
+        <input type="text" id="rule-value" placeholder="Wert 1" />
+      </div>
+    </div>
+    <div class="rule-link-card">
+      <p class="rule-condition-title">Verknüpfung</p>
+      <select id="rule-condition-operator" aria-label="Verknüpfung">
+        <option value="and">UND</option>
+        <option value="or">ODER</option>
+      </select>
+    </div>
+    <div class="rule-condition-card">
+      <p class="rule-condition-title">Bedingung 2 (optional)</p>
+      <div class="rule-form-grid">
+        <select id="rule-second-field" aria-label="Bedingung 2 Feld">
+          <option value="">2. Feld (optional)</option>
+          <option value="description">Beschreibung</option>
+          <option value="counterparty_name">Auftraggeber</option>
+          <option value="raw_text">Rohtext</option>
+        </select>
+        <select id="rule-second-type" aria-label="Bedingung 2 Typ">
+          <option value="contains">enthält</option>
+          <option value="equals">entspricht</option>
+          <option value="starts_with">beginnt mit</option>
+          <option value="regex">Muster (RegEx)</option>
+        </select>
+        <input type="text" id="rule-second-value" placeholder="Wert 2 (optional)" />
+      </div>
+    </div>
+  </div>
+  <div class="rule-form-actions">
     <button id="create-rule-btn" class="btn-primary">Regel erstellen</button>
     <button id="apply-existing-rules-btn" class="btn-secondary">Auf unkategorisierte Buchungen anwenden</button>
   </div>
-  <p class="hint-text">Alle Filter werden mit UND verknüpft.</p>
+  <p class="hint-text">Der grobe Filter ist immer Aufwände oder Erträge.</p>
 </section>
 
 <section class="panel">
@@ -39,13 +71,16 @@
     <thead>
       <tr>
         <th>Name</th>
-        <th>Feld</th>
-        <th>Typ</th>
-        <th>Suchwert</th>
-        <th>Gegenpartei enthält</th>
-        <th>Betragsrichtung</th>
+        <th>Gilt für</th>
+        <th>Feld 1</th>
+        <th>Typ 1</th>
+        <th>Wert 1</th>
+        <th>Verknüpfung</th>
+        <th>Feld 2</th>
+        <th>Typ 2</th>
+        <th>Wert 2</th>
         <th>Kategorie</th>
-        <th>Ignorieren</th>
+        <th>Buchungen ignorieren</th>
         <th>Aktiv</th>
         <th>Aktionen</th>
       </tr>

@@ -18,6 +18,7 @@ class TransactionBatchPatch(BaseModel):
 class TransactionSplitItem(BaseModel):
     category_id: int
     amount: float
+    excluded: bool = False
 
 
 class TransactionSplitUpdate(BaseModel):

@@ -63,8 +63,8 @@ def test_splits_are_used_for_summary_and_sankey():
         (import_job_id, now, now),
     )
     tx_id = conn.execute("SELECT id FROM transactions ORDER BY id DESC LIMIT 1").fetchone()["id"]
-    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Food'").fetchone()["id"]
-    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Rent'").fetchone()["id"]
+    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Lebensmittel'").fetchone()["id"]
+    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Miete'").fetchone()["id"]
     conn.executemany(
         """
         INSERT INTO transaction_splits(transaction_id, category_id, amount, created_at, updated_at)
@@ -81,19 +81,19 @@ def test_splits_are_used_for_summary_and_sankey():
     summary = summarize(rows)
     assert summary["total_expenses"] == 100.0
     assert summary["totals_by_category"] == [
-        {"category": "Food", "type": "expense", "total": 40.0},
-        {"category": "Rent", "type": "expense", "total": 60.0},
+        {"category": "Lebensmittel", "type": "expense", "total": 40.0},
+        {"category": "Miete", "type": "expense", "total": 60.0},
     ]
 
     sankey = build_sankey(rows)
-    assert {"source": "Net", "target": "Food", "value": 40.0} in sankey["links"]
-    assert {"source": "Net", "target": "Rent", "value": 60.0} in sankey["links"]
+    assert {"source": "Net", "target": "Lebensmittel", "value": 40.0} in sankey["links"]
+    assert {"source": "Net", "target": "Miete", "value": 60.0} in sankey["links"]
 
 
 def test_import_applies_active_rules():
     conn = _conn()
     now = "2026-03-18T00:00:00+00:00"
-    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Food'").fetchone()["id"]
+    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Lebensmittel'").fetchone()["id"]
     conn.execute(
         """
         INSERT INTO rules(
@@ -129,11 +129,60 @@ def test_import_applies_active_rules():
     assert rows[1]["category_id"] is None
 
 
+def test_excluded_splits_are_ignored_in_reporting():
+    conn = _conn()
+    now = "2026-03-18T00:00:00+00:00"
+    conn.execute(
+        """
+        INSERT INTO import_jobs(filename, column_mapping_json, row_count, new_row_count, duplicate_row_count, failed_row_count, imported_at)
+        VALUES ('seed.csv', '{}', 1, 1, 0, 0, ?)
+        """,
+        (now,),
+    )
+    import_job_id = conn.execute("SELECT id FROM import_jobs ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    conn.execute(
+        """
+        INSERT INTO transactions(
+            booking_date, value_date, amount, currency, counterparty_name, description,
+            raw_text, memo, category_id, excluded, dedupe_key, import_job_id, raw_data_json,
+            created_at, updated_at
+        )
+        VALUES ('2026-03-10', NULL, -100.00, 'EUR', NULL, 'Test Expense', NULL, NULL, NULL, 0, 'split-excl', ?, '{}', ?, ?)
+        """,
+        (import_job_id, now, now),
+    )
+    tx_id = conn.execute("SELECT id FROM transactions ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Lebensmittel'").fetchone()["id"]
+    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Miete'").fetchone()["id"]
+    conn.executemany(
+        """
+        INSERT INTO transaction_splits(transaction_id, category_id, amount, excluded, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (tx_id, food_id, -40.0, 1, now, now),
+            (tx_id, rent_id, -60.0, 0, now, now),
+        ],
+    )
+    conn.commit()
+
+    rows = list_transactions_for_period(conn, "2026-03-01", "2026-04-01")
+    summary = summarize(rows)
+    assert summary["total_expenses"] == 60.0
+    assert summary["totals_by_category"] == [
+        {"category": "Miete", "type": "expense", "total": 60.0},
+    ]
+
+    sankey = build_sankey(rows)
+    assert {"source": "Net", "target": "Miete", "value": 60.0} in sankey["links"]
+    assert {"source": "Net", "target": "Lebensmittel", "value": 40.0} not in sankey["links"]
+
+
 def test_apply_rules_to_existing_only_updates_uncategorized():
     conn = _conn()
     now = "2026-03-18T00:00:00+00:00"
-    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Food'").fetchone()["id"]
-    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Rent'").fetchone()["id"]
+    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Lebensmittel'").fetchone()["id"]
+    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Miete'").fetchone()["id"]
 
     conn.execute(
         """

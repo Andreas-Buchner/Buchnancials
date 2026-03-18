@@ -3,8 +3,11 @@
   const createBtn = document.getElementById("create-rule-btn");
   const applyExistingBtn = document.getElementById("apply-existing-rules-btn");
   const categorySelect = document.getElementById("rule-category");
-  const ruleCounterpartyFilter = document.getElementById("rule-counterparty-filter");
   const ruleAmountSign = document.getElementById("rule-amount-sign");
+  const ruleOperator = document.getElementById("rule-condition-operator");
+  const ruleSecondField = document.getElementById("rule-second-field");
+  const ruleSecondType = document.getElementById("rule-second-type");
+  const ruleSecondValue = document.getElementById("rule-second-value");
   let categories = [];
 
   function fieldLabel(value) {
@@ -12,10 +15,10 @@
       return "Beschreibung";
     }
     if (value === "counterparty_name") {
-      return "Gegenpartei";
+      return "Auftraggeber";
     }
     if (value === "raw_text") {
-      return "Buchungstext (roh)";
+      return "Rohtext";
     }
     return value;
   }
@@ -38,12 +41,12 @@
 
   function amountSignLabel(value) {
     if (value === "negative") {
-      return "nur Ausgaben";
+      return "Aufwände";
     }
     if (value === "positive") {
-      return "nur Einnahmen";
+      return "Erträge";
     }
-    return "alle";
+    return value;
   }
 
   function categoryOptions(selectedId) {
@@ -54,6 +57,53 @@
       );
     });
     return options.join("");
+  }
+
+  function fieldOptions(selectedValue = "", withEmpty = false) {
+    const options = [];
+    if (withEmpty) {
+      options.push(`<option value="" ${selectedValue === "" ? "selected" : ""}>(kein Feld)</option>`);
+    }
+    ["description", "counterparty_name", "raw_text"].forEach((field) => {
+      options.push(
+        `<option value="${field}" ${selectedValue === field ? "selected" : ""}>${fieldLabel(field)}</option>`
+      );
+    });
+    return options.join("");
+  }
+
+  function typeOptions(selectedValue = "contains") {
+    return ["contains", "equals", "starts_with", "regex"]
+      .map((type) => `<option value="${type}" ${selectedValue === type ? "selected" : ""}>${typeLabel(type)}</option>`)
+      .join("");
+  }
+
+  function operatorOptions(selectedValue = "and") {
+    return `
+      <option value="and" ${selectedValue === "and" ? "selected" : ""}>UND</option>
+      <option value="or" ${selectedValue === "or" ? "selected" : ""}>ODER</option>
+    `;
+  }
+
+  function normalizeSecondCondition(field, type, value) {
+    const cleanedValue = (value || "").trim();
+    if (!cleanedValue) {
+      return {
+        second_match_field: null,
+        second_match_type: null,
+        second_match_value: null,
+      };
+    }
+    const cleanedField = (field || "").trim();
+    const cleanedType = (type || "").trim();
+    if (!cleanedField || !cleanedType) {
+      throw new Error("Für die zweite Bedingung bitte Feld und Typ auswählen.");
+    }
+    return {
+      second_match_field: cleanedField,
+      second_match_type: cleanedType,
+      second_match_value: cleanedValue,
+    };
   }
 
   async function loadCategories() {
@@ -70,29 +120,18 @@
       row.innerHTML = `
         <td><input type="text" class="rule-name" value="${rule.name}" /></td>
         <td>
-          <select class="rule-field">
-            <option value="description" ${rule.match_field === "description" ? "selected" : ""}>${fieldLabel("description")}</option>
-            <option value="counterparty_name" ${rule.match_field === "counterparty_name" ? "selected" : ""}>${fieldLabel("counterparty_name")}</option>
-            <option value="raw_text" ${rule.match_field === "raw_text" ? "selected" : ""}>${fieldLabel("raw_text")}</option>
-          </select>
-        </td>
-        <td>
-          <select class="rule-type">
-            <option value="contains" ${rule.match_type === "contains" ? "selected" : ""}>${typeLabel("contains")}</option>
-            <option value="equals" ${rule.match_type === "equals" ? "selected" : ""}>${typeLabel("equals")}</option>
-            <option value="starts_with" ${rule.match_type === "starts_with" ? "selected" : ""}>${typeLabel("starts_with")}</option>
-            <option value="regex" ${rule.match_type === "regex" ? "selected" : ""}>${typeLabel("regex")}</option>
-          </select>
-        </td>
-        <td><input type="text" class="rule-value" value="${rule.match_value}" /></td>
-        <td><input type="text" class="rule-counterparty-filter" value="${rule.counterparty_filter || ""}" /></td>
-        <td>
           <select class="rule-amount-sign">
-            <option value="any" ${(rule.amount_sign || "any") === "any" ? "selected" : ""}>${amountSignLabel("any")}</option>
-            <option value="negative" ${rule.amount_sign === "negative" ? "selected" : ""}>${amountSignLabel("negative")}</option>
+            <option value="negative" ${rule.amount_sign !== "positive" ? "selected" : ""}>${amountSignLabel("negative")}</option>
             <option value="positive" ${rule.amount_sign === "positive" ? "selected" : ""}>${amountSignLabel("positive")}</option>
           </select>
         </td>
+        <td><select class="rule-field">${fieldOptions(rule.match_field)}</select></td>
+        <td><select class="rule-type">${typeOptions(rule.match_type)}</select></td>
+        <td><input type="text" class="rule-value" value="${rule.match_value}" /></td>
+        <td><select class="rule-condition-operator">${operatorOptions(rule.condition_operator || "and")}</select></td>
+        <td><select class="rule-second-field">${fieldOptions(rule.second_match_field || "", true)}</select></td>
+        <td><select class="rule-second-type">${typeOptions(rule.second_match_type || "contains")}</select></td>
+        <td><input type="text" class="rule-second-value" value="${rule.second_match_value || ""}" /></td>
         <td><select class="rule-category">${categoryOptions(rule.category_id)}</select></td>
         <td><input type="checkbox" class="rule-exclude" ${rule.exclude_transaction ? "checked" : ""} /></td>
         <td><input type="checkbox" class="rule-active" ${rule.active ? "checked" : ""} /></td>
@@ -104,12 +143,20 @@
 
       row.querySelector(".rule-save").addEventListener("click", async () => {
         try {
+          const secondCondition = normalizeSecondCondition(
+            row.querySelector(".rule-second-field").value,
+            row.querySelector(".rule-second-type").value,
+            row.querySelector(".rule-second-value").value
+          );
+
           const payload = {
             name: row.querySelector(".rule-name").value,
             match_field: row.querySelector(".rule-field").value,
             match_type: row.querySelector(".rule-type").value,
             match_value: row.querySelector(".rule-value").value,
-            counterparty_filter: row.querySelector(".rule-counterparty-filter").value || null,
+            condition_operator: row.querySelector(".rule-condition-operator").value,
+            ...secondCondition,
+            counterparty_filter: null,
             amount_sign: row.querySelector(".rule-amount-sign").value,
             category_id: row.querySelector(".rule-category").value
               ? Number(row.querySelector(".rule-category").value)
@@ -146,27 +193,30 @@
   }
 
   createBtn.addEventListener("click", async () => {
-    const payload = {
-      name: document.getElementById("rule-name").value,
-      match_field: document.getElementById("rule-field").value,
-      match_type: document.getElementById("rule-type").value,
-      match_value: document.getElementById("rule-value").value,
-      counterparty_filter: ruleCounterpartyFilter.value || null,
-      amount_sign: ruleAmountSign.value,
-      category_id: document.getElementById("rule-category").value
-        ? Number(document.getElementById("rule-category").value)
-        : null,
-      exclude_transaction: document.getElementById("rule-exclude").checked,
-      priority: 100,
-      active: true,
-    };
-
-    if (!payload.name.trim() || !payload.match_value.trim()) {
-      window.Buchnancials.notify("Bitte Regelname und Suchwert ausfüllen.", "error");
-      return;
-    }
-
     try {
+      const secondCondition = normalizeSecondCondition(ruleSecondField.value, ruleSecondType.value, ruleSecondValue.value);
+      const payload = {
+        name: document.getElementById("rule-name").value,
+        match_field: document.getElementById("rule-field").value,
+        match_type: document.getElementById("rule-type").value,
+        match_value: document.getElementById("rule-value").value,
+        condition_operator: ruleOperator.value,
+        ...secondCondition,
+        counterparty_filter: null,
+        amount_sign: ruleAmountSign.value,
+        category_id: document.getElementById("rule-category").value
+          ? Number(document.getElementById("rule-category").value)
+          : null,
+        exclude_transaction: document.getElementById("rule-exclude").checked,
+        priority: 100,
+        active: true,
+      };
+
+      if (!payload.name.trim() || !payload.match_value.trim()) {
+        window.Buchnancials.notify("Bitte Regelname und den ersten Suchwert ausfüllen.", "error");
+        return;
+      }
+
       await window.Buchnancials.jsonFetch("/rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,7 +236,7 @@
       });
       window.Buchnancials.notify(
         `Regeln angewendet: ${result.updated_transactions} aktualisiert, ${result.categorized_transactions} kategorisiert, ${result.excluded_transactions} ignoriert.`,
-        "success",
+        "success"
       );
     } catch (err) {
       window.Buchnancials.notify(err.message, "error");

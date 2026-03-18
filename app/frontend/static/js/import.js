@@ -13,17 +13,20 @@
   const progressSection = document.getElementById("progress-section");
   const progressText = document.getElementById("progress-text");
   const progressFill = document.getElementById("progress-fill");
+  const snapshotFileInput = document.getElementById("snapshot-file");
+  const snapshotImportBtn = document.getElementById("snapshot-import-btn");
 
   const canonicalFields = [
     { key: "booking_date", label: "Buchungsdatum", required: true },
     { key: "amount", label: "Betrag", required: true },
     { key: "description", label: "Beschreibung", required: true },
-    { key: "counterparty_name", label: "Gegenpartei", required: false },
+    { key: "counterparty_name", label: "Auftraggeber", required: false },
     { key: "raw_text", label: "Rohtext", required: false },
   ];
 
   let latestPreview = null;
   let progressTimer = null;
+  let onResultModalClose = null;
 
   function setButtonsBusy(isBusy) {
     previewBtn.disabled = isBusy;
@@ -130,7 +133,8 @@
     return mapping;
   }
 
-  function showResultModal(title, message) {
+  function showResultModal(title, message, onClose = null) {
+    onResultModalClose = onClose;
     resultTitle.textContent = title;
     resultMessage.textContent = message;
     resultModal.hidden = false;
@@ -138,6 +142,11 @@
 
   function closeResultModal() {
     resultModal.hidden = true;
+    if (onResultModalClose) {
+      const callback = onResultModalClose;
+      onResultModalClose = null;
+      callback();
+    }
   }
 
   resultCloseBtn.addEventListener("click", closeResultModal);
@@ -198,6 +207,45 @@
       showResultModal("Import fehlgeschlagen", `Der Import konnte nicht abgeschlossen werden:\n${err.message}`);
     } finally {
       setButtonsBusy(false);
+    }
+  });
+
+  snapshotImportBtn.addEventListener("click", async () => {
+    const snapshotFile = snapshotFileInput.files && snapshotFileInput.files[0];
+    if (!snapshotFile) {
+      window.Buchnancials.notify("Bitte zuerst eine Snapshot-Datei auswählen.", "error");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Beim Snapshot-Import werden alle aktuellen Daten überschrieben. Möchtest du fortfahren?",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      snapshotImportBtn.disabled = true;
+      startProgress("Snapshot wird importiert ...");
+      const formData = new FormData();
+      formData.append("file", snapshotFile);
+      const result = await window.Buchnancials.jsonFetch("/snapshot/import", {
+        method: "POST",
+        body: formData,
+      });
+      finishProgress("Snapshot importiert.");
+      showResultModal(
+        "Snapshot importiert",
+        `Die Daten wurden erfolgreich übernommen.\nTransaktionen: ${result.counts.transactions}\nKategorien: ${result.counts.categories}\nRegeln: ${result.counts.rules}`,
+        () => {
+          window.location.href = "/";
+        },
+      );
+    } catch (err) {
+      failProgress();
+      showResultModal("Snapshot-Import fehlgeschlagen", String(err.message || err));
+    } finally {
+      snapshotImportBtn.disabled = false;
     }
   });
 })();

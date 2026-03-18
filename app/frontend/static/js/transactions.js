@@ -1,4 +1,6 @@
 (function () {
+  const BALANCE_NODE_LABEL = "Bilanzsumme";
+
   const staged = new Map();
   const saveBtn = document.getElementById("save-staged-btn");
   const discardBtn = document.getElementById("discard-staged-btn");
@@ -15,16 +17,47 @@
 
   function normalizeCategoryLabel(value) {
     if (!value || !value.trim()) {
-      return "Nicht kategorisiert";
+      return "Ohne Kategorie";
     }
     return value
-      .replace(/\s+\((income|expense|einnahme|ausgabe)(,\s*inactive|,\s*inaktiv)?\)$/i, "")
+      .replace(/\s+\((income|expense|einnahme|einnahmen|ausgabe|ausgaben)(,\s*inactive|,\s*inaktiv)?\)$/i, "")
       .trim();
+  }
+
+  function formatEuroCompact(value) {
+    const numeric = Number(value || 0);
+    const absolute = Math.round(Math.abs(numeric));
+    const grouped = String(absolute).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    const prefix = numeric < 0 ? "-" : "";
+    return `${prefix}${grouped} €`;
+  }
+
+  function formatEuroNode(value) {
+    const absolute = Math.round(Math.abs(Number(value || 0)));
+    const grouped = String(absolute).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return `${grouped} €`;
+  }
+
+  function isHexColor(value) {
+    return /^#[0-9a-f]{6}$/i.test((value || "").trim());
+  }
+
+  function hexToRgba(hex, alpha) {
+    const normalized = (hex || "").trim();
+    if (!isHexColor(normalized)) {
+      return null;
+    }
+    const r = Number.parseInt(normalized.slice(1, 3), 16);
+    const g = Number.parseInt(normalized.slice(3, 5), 16);
+    const b = Number.parseInt(normalized.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
   function buildSankey(rows) {
     const income = new Map();
     const expense = new Map();
+    const incomeColor = new Map();
+    const expenseColor = new Map();
     let totalIncome = 0;
     let totalExpenses = 0;
 
@@ -33,12 +66,19 @@
         return;
       }
       const amount = Number(row.amount || 0);
-      const category = normalizeCategoryLabel(row.category_name || "Nicht kategorisiert");
+      const category = normalizeCategoryLabel(row.category_name || "Ohne Kategorie");
+      const categoryColor = isHexColor(row.category_color) ? row.category_color : null;
       if (amount >= 0) {
         income.set(category, (income.get(category) || 0) + amount);
+        if (!incomeColor.has(category) && categoryColor) {
+          incomeColor.set(category, categoryColor);
+        }
         totalIncome += amount;
       } else {
         expense.set(category, (expense.get(category) || 0) + Math.abs(amount));
+        if (!expenseColor.has(category) && categoryColor) {
+          expenseColor.set(category, categoryColor);
+        }
         totalExpenses += Math.abs(amount);
       }
     });
@@ -53,7 +93,12 @@
       .forEach((category) => {
         const value = Number((income.get(category) || 0).toFixed(2));
         if (value > 0) {
-          links.push({ source: incomeNode(category), target: "Saldo", value });
+          links.push({
+            source: incomeNode(category),
+            target: BALANCE_NODE_LABEL,
+            value,
+            color: hexToRgba(incomeColor.get(category), 0.4),
+          });
         }
       });
 
@@ -62,27 +107,102 @@
       .forEach((category) => {
         const value = Number((expense.get(category) || 0).toFixed(2));
         if (value > 0) {
-          links.push({ source: "Saldo", target: expenseNode(category), value });
+          links.push({
+            source: BALANCE_NODE_LABEL,
+            target: expenseNode(category),
+            value,
+            color: hexToRgba(expenseColor.get(category), 0.4),
+          });
         }
       });
 
     const net = Number((totalIncome - totalExpenses).toFixed(2));
     if (net > 0) {
-      links.push({ source: "Saldo", target: "Überschuss", value: net, color: "#2e7d32" });
+      links.push({
+        source: BALANCE_NODE_LABEL,
+        target: "Überschuss",
+        value: net,
+        color: "rgba(93, 125, 104, 0.56)",
+      });
     } else if (net < 0) {
-      links.push({ source: "Fehlbetrag", target: "Saldo", value: Math.abs(net), color: "#b71c1c" });
+      links.push({
+        source: "Fehlbetrag",
+        target: BALANCE_NODE_LABEL,
+        value: Math.abs(net),
+        color: "rgba(155, 102, 102, 0.56)",
+      });
     }
 
     const incomeNodes = [...income.keys()].sort().map(incomeNode);
     const expenseNodes = [...expense.keys()].sort().map(expenseNode);
-    let nodes = [...incomeNodes, "Saldo", ...expenseNodes];
+    let nodes = [...incomeNodes, BALANCE_NODE_LABEL, ...expenseNodes];
     if (net > 0) {
       nodes.push("Überschuss");
     }
     if (net < 0) {
       nodes = ["Fehlbetrag", ...nodes];
     }
-    return { nodes, links };
+
+    const nodeColors = {};
+    income.forEach((_, category) => {
+      const label = incomeNode(category);
+      nodeColors[label] = incomeColor.get(category) || "#739c8f";
+    });
+    expense.forEach((_, category) => {
+      const label = expenseNode(category);
+      nodeColors[label] = expenseColor.get(category) || "#b98c87";
+    });
+    nodeColors[BALANCE_NODE_LABEL] = "#121212";
+    if (net > 0) {
+      nodeColors["Überschuss"] = "#5d7d68";
+    }
+    if (net < 0) {
+      nodeColors["Fehlbetrag"] = "#9b6666";
+    }
+
+    return { nodes, links, node_colors: nodeColors };
+  }
+
+  function summarizeRows(rows) {
+    let income = 0;
+    let expenses = 0;
+    rows.forEach((row) => {
+      if (row.excluded) {
+        return;
+      }
+      const amount = Number(row.amount || 0);
+      if (amount >= 0) {
+        income += amount;
+      } else {
+        expenses += Math.abs(amount);
+      }
+    });
+    return {
+      income,
+      expenses,
+      saldo: income - expenses,
+    };
+  }
+
+  function updateSummaryPills(block, totals) {
+    const summary = block.querySelector(":scope > summary");
+    if (!summary) {
+      return;
+    }
+    const incomePill = summary.querySelector(".summary-pill.income");
+    const expensePill = summary.querySelector(".summary-pill.expense");
+    const saldoPill = Array.from(summary.querySelectorAll(".summary-pill")).find(
+      (pill) => !pill.classList.contains("income") && !pill.classList.contains("expense")
+    );
+    if (incomePill) {
+      incomePill.textContent = `Einnahmen ${formatEuroCompact(totals.income)}`;
+    }
+    if (expensePill) {
+      expensePill.textContent = `Ausgaben ${formatEuroCompact(totals.expenses)}`;
+    }
+    if (saldoPill) {
+      saldoPill.textContent = `Saldo ${formatEuroCompact(totals.saldo)}`;
+    }
   }
 
   function renderSankey(el, sankey) {
@@ -100,11 +220,69 @@
     const target = [];
     const value = [];
     const color = [];
+    const customdata = [];
+
+    const incomeNodes = new Set();
+    const expenseNodes = new Set();
+    sankey.links.forEach((link) => {
+      if (link.target === BALANCE_NODE_LABEL) {
+        incomeNodes.add(link.source);
+      } else if (link.source === BALANCE_NODE_LABEL) {
+        expenseNodes.add(link.target);
+      }
+    });
+
+    const inbound = new Map();
+    const outbound = new Map();
+    sankey.links.forEach((link) => {
+      outbound.set(link.source, (outbound.get(link.source) || 0) + Number(link.value || 0));
+      inbound.set(link.target, (inbound.get(link.target) || 0) + Number(link.value || 0));
+    });
+    const displayLabels = sankey.nodes.map((label) => {
+      const total = Math.max(inbound.get(label) || 0, outbound.get(label) || 0);
+      if (total <= 0) {
+        return label;
+      }
+      return `${label} · ${formatEuroNode(total)}`;
+    });
+
+    const providedNodeColors = sankey.node_colors || {};
+    const nodeColors = sankey.nodes.map((label) => {
+      if (providedNodeColors[label]) {
+        return providedNodeColors[label];
+      }
+      if (label === BALANCE_NODE_LABEL) {
+        return "#121212";
+      }
+      if (label === "Überschuss") {
+        return "#5d7d68";
+      }
+      if (label === "Fehlbetrag") {
+        return "#9b6666";
+      }
+      if (incomeNodes.has(label)) {
+        return "#739c8f";
+      }
+      if (expenseNodes.has(label)) {
+        return "#b98c87";
+      }
+      return "#8a9ba8";
+    });
+
     sankey.links.forEach((link) => {
       source.push(index.get(link.source));
       target.push(index.get(link.target));
       value.push(link.value);
-      color.push(link.color || "rgba(10,108,99,0.32)");
+      customdata.push(formatEuroCompact(link.value));
+      if (link.color) {
+        color.push(link.color);
+      } else if (link.target === BALANCE_NODE_LABEL) {
+        color.push("rgba(103, 142, 132, 0.35)");
+      } else if (link.source === BALANCE_NODE_LABEL) {
+        color.push("rgba(178, 129, 125, 0.35)");
+      } else {
+        color.push("rgba(109, 123, 133, 0.35)");
+      }
     });
 
     window.Plotly.react(
@@ -113,17 +291,26 @@
         {
           type: "sankey",
           arrangement: "snap",
+          textfont: { size: 11, color: "#26333a" },
           node: {
-            label: sankey.nodes,
+            label: displayLabels,
+            color: nodeColors,
             pad: 12,
-            thickness: 15,
-            line: { color: "rgba(80,80,80,0.35)", width: 0.5 },
+            thickness: 20,
+            line: { color: "rgba(45,45,45,0.3)", width: 0.5 },
           },
-          link: { source, target, value, color },
+          link: {
+            source,
+            target,
+            value,
+            color,
+            customdata,
+            hovertemplate: "%{source.label} → %{target.label}<br>%{customdata}<extra></extra>",
+          },
         },
       ],
       {
-        margin: { l: 8, r: 8, t: 8, b: 8 },
+        margin: { l: 18, r: 18, t: 10, b: 10 },
         paper_bgcolor: "rgba(0,0,0,0)",
         font: { size: 12 },
       },
@@ -147,7 +334,9 @@
       }
       return splits.map((split) => ({
         amount: Number(split.amount),
-        category_name: normalizeCategoryLabel(split.category_name || "Nicht kategorisiert"),
+        excluded: Boolean(split.excluded),
+        category_name: normalizeCategoryLabel(split.category_name || "Ohne Kategorie"),
+        category_color: split.category_color || null,
       }));
     } catch (err) {
       return [];
@@ -161,7 +350,12 @@
       const splitItems = parseRowSplits(row);
       if (splitItems.length > 0) {
         splitItems.forEach((split) => {
-          rows.push({ amount: split.amount, excluded, category_name: split.category_name });
+          rows.push({
+            amount: split.amount,
+            excluded: excluded || split.excluded,
+            category_name: split.category_name,
+            category_color: split.category_color || null,
+          });
         });
         return;
       }
@@ -171,7 +365,8 @@
       rows.push({
         amount: parseRowAmount(row),
         excluded,
-        category_name: normalizeCategoryLabel(selectedOption ? selectedOption.textContent : "Nicht kategorisiert"),
+        category_name: normalizeCategoryLabel(selectedOption ? selectedOption.textContent : "Ohne Kategorie"),
+        category_color: selectedOption ? selectedOption.dataset.color || null : null,
       });
     });
     return rows;
@@ -188,26 +383,32 @@
   function refreshSankeyFromDom() {
     document.querySelectorAll(".month-block").forEach((monthBlock) => {
       const chart = monthBlock.querySelector(".month-sankey");
+      const rows = collectMonthRows(monthBlock);
+      updateSummaryPills(monthBlock, summarizeRows(rows));
       if (!chart) {
         return;
       }
-      renderSankey(chart, buildSankey(collectMonthRows(monthBlock)));
+      renderSankey(chart, buildSankey(rows));
     });
 
     document.querySelectorAll(".quarter-block").forEach((quarterBlock) => {
       const chart = quarterBlock.querySelector(".quarter-sankey");
+      const rows = collectRowsInContainer(quarterBlock);
+      updateSummaryPills(quarterBlock, summarizeRows(rows));
       if (!chart) {
         return;
       }
-      renderSankey(chart, buildSankey(collectRowsInContainer(quarterBlock)));
+      renderSankey(chart, buildSankey(rows));
     });
 
     document.querySelectorAll(".year-block").forEach((yearBlock) => {
       const chart = yearBlock.querySelector(".year-sankey");
+      const rows = collectRowsInContainer(yearBlock);
+      updateSummaryPills(yearBlock, summarizeRows(rows));
       if (!chart) {
         return;
       }
-      renderSankey(chart, buildSankey(collectRowsInContainer(yearBlock)));
+      renderSankey(chart, buildSankey(rows));
     });
   }
 
@@ -296,11 +497,13 @@
     wrapper.innerHTML = `
       <select class="split-category">${categoryOptionsHtml}</select>
       <input class="split-amount" type="number" step="0.01" placeholder="Betrag" />
+      <label class="split-exclude-toggle"><input type="checkbox" class="split-excluded" /> Ignorieren</label>
       <button class="btn-secondary split-remove-line">Entfernen</button>
     `;
     if (split) {
       wrapper.querySelector(".split-category").value = String(split.category_id);
       wrapper.querySelector(".split-amount").value = Number(split.amount).toFixed(2);
+      wrapper.querySelector(".split-excluded").checked = Boolean(split.excluded);
     }
     return wrapper;
   }
@@ -357,8 +560,10 @@
     function bindSplitLineEvents() {
       lineContainer.querySelectorAll(".split-line").forEach((line) => {
         const amountInput = line.querySelector(".split-amount");
+        const excludedInput = line.querySelector(".split-excluded");
         const removeBtn = line.querySelector(".split-remove-line");
         amountInput.oninput = () => updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
+        excludedInput.onchange = () => updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
         removeBtn.onclick = () => {
           line.remove();
           updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
@@ -383,6 +588,7 @@
         .map((line) => ({
           category_id: Number(line.querySelector(".split-category").value),
           amount: Number(line.querySelector(".split-amount").value),
+          excluded: line.querySelector(".split-excluded").checked,
         }))
         .filter((item) => Number.isFinite(item.category_id) && Number.isFinite(item.amount));
 

@@ -8,6 +8,7 @@ from app.core.db import utc_now_iso
 ALLOWED_MATCH_TYPES = {"contains", "equals", "starts_with", "starts with", "regex"}
 ALLOWED_FIELDS = {"description", "counterparty_name", "raw_text"}
 ALLOWED_AMOUNT_SIGNS = {"any", "positive", "negative"}
+ALLOWED_CONDITION_OPERATORS = {"and", "or"}
 
 
 def normalize_match_type(value: str) -> str:
@@ -23,6 +24,10 @@ def load_active_rules(conn: sqlite3.Connection) -> list[dict[str, Any]]:
           match_field,
           match_type,
           match_value,
+          second_match_field,
+          second_match_type,
+          second_match_value,
+          condition_operator,
           counterparty_filter,
           amount_sign,
           category_id,
@@ -55,16 +60,31 @@ def _match_rule(candidate: str, match_type: str, match_value: str) -> bool:
     return False
 
 
+def _is_match_type_allowed(match_type: str | None) -> bool:
+    return normalize_match_type(match_type or "") in {normalize_match_type(x) for x in ALLOWED_MATCH_TYPES}
+
+
+def _match_condition(transaction: dict[str, Any], match_field: str | None, match_type: str | None, match_value: str | None) -> bool:
+    if not match_field or not match_type:
+        return False
+    if match_field not in ALLOWED_FIELDS:
+        return False
+    if not _is_match_type_allowed(match_type):
+        return False
+    candidate = (transaction.get(match_field) or "").strip()
+    return _match_rule(candidate, match_type, match_value or "")
+
+
 def apply_rules(transaction: dict[str, Any], rules: list[dict[str, Any]]) -> dict[str, Any]:
     for rule in rules:
         match_field = rule.get("match_field")
         match_type = rule.get("match_type")
         match_value = rule.get("match_value")
+        second_match_field = rule.get("second_match_field")
+        second_match_type = rule.get("second_match_type")
+        second_match_value = rule.get("second_match_value")
+        condition_operator = (rule.get("condition_operator") or "and").strip().lower()
         amount_sign = (rule.get("amount_sign") or "any").strip().lower()
-        if match_field not in ALLOWED_FIELDS:
-            continue
-        if normalize_match_type(match_type or "") not in {normalize_match_type(x) for x in ALLOWED_MATCH_TYPES}:
-            continue
         if amount_sign not in ALLOWED_AMOUNT_SIGNS:
             continue
 
@@ -80,8 +100,19 @@ def apply_rules(transaction: dict[str, Any], rules: list[dict[str, Any]]) -> dic
             if counterparty_filter not in candidate_counterparty:
                 continue
 
-        candidate = (transaction.get(match_field) or "").strip()
-        if _match_rule(candidate, match_type, match_value):
+        primary_match = _match_condition(transaction, match_field, match_type, match_value)
+        has_secondary = bool(
+            (second_match_field or "").strip() and (second_match_type or "").strip() and (second_match_value or "").strip()
+        )
+        if has_secondary:
+            secondary_match = _match_condition(transaction, second_match_field, second_match_type, second_match_value)
+            if condition_operator not in ALLOWED_CONDITION_OPERATORS:
+                condition_operator = "and"
+            matched = (primary_match and secondary_match) if condition_operator == "and" else (primary_match or secondary_match)
+        else:
+            matched = primary_match
+
+        if matched:
             return {
                 "matched_rule_id": rule["id"],
                 "category_id": rule.get("category_id"),

@@ -23,3 +23,11 @@ def test_preview_handles_cp1252():
     assert result["row_count"] == 1
     assert result["sample_rows"][0]["Text"] == "Miete für März"
 
+
+def test_preview_prefills_auftraggebername_as_counterparty():
+    raw = (
+        "Buchungsdatum;Betrag;Verwendungszweck;Auftraggebername\n"
+        "04.03.2026;-18,71;Einkauf;HOFER FILIALE\n"
+    ).encode("utf-8")
+    result = preview_csv(raw)
+    assert result["mapping_suggestions"]["counterparty_name"] == "Auftraggebername"

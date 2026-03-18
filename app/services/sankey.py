@@ -5,6 +5,8 @@ from typing import Any
 def build_sankey(rows: list[dict[str, Any]]) -> dict[str, Any]:
     income_links: dict[str, float] = defaultdict(float)
     expense_links: dict[str, float] = defaultdict(float)
+    income_colors: dict[str, str] = {}
+    expense_colors: dict[str, str] = {}
     total_income = 0.0
     total_expenses = 0.0
 
@@ -18,6 +20,8 @@ def build_sankey(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 {
                     "amount": float(split.get("amount", 0.0)),
                     "category_name": split.get("category_name") or "Uncategorized",
+                    "category_color": split.get("category_color"),
+                    "excluded": bool(split.get("excluded")),
                 }
                 for split in split_items
             ]
@@ -26,17 +30,26 @@ def build_sankey(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 {
                     "amount": float(row.get("amount", 0.0)),
                     "category_name": row.get("category_name") or "Uncategorized",
+                    "category_color": row.get("category_color"),
+                    "excluded": False,
                 }
             ]
 
         for component in components:
+            if component["excluded"]:
+                continue
             amount = float(component["amount"])
             category = component["category_name"] or "Uncategorized"
+            category_color = component.get("category_color")
             if amount >= 0:
                 income_links[category] += amount
+                if category not in income_colors and category_color:
+                    income_colors[category] = str(category_color)
                 total_income += amount
             else:
                 expense_links[category] += abs(amount)
+                if category not in expense_colors and category_color:
+                    expense_colors[category] = str(category_color)
                 total_expenses += abs(amount)
 
     collisions = set(income_links.keys()) & set(expense_links.keys())
@@ -69,10 +82,10 @@ def build_sankey(rows: list[dict[str, Any]]) -> dict[str, Any]:
     net = round(total_income - total_expenses, 2)
     if net > 0:
         nodes.add("Savings")
-        links.append({"source": "Net", "target": "Savings", "value": net, "color": "#2e7d32"})
+        links.append({"source": "Net", "target": "Savings", "value": net, "color": "rgba(64, 90, 102, 0.58)"})
     elif net < 0:
         nodes.add("Shortfall")
-        links.append({"source": "Shortfall", "target": "Net", "value": abs(net), "color": "#b71c1c"})
+        links.append({"source": "Shortfall", "target": "Net", "value": abs(net), "color": "rgba(123, 80, 80, 0.58)"})
 
     # Keep node order stable and human-friendly.
     income_nodes = sorted([income_node_name(category) for category in income_links.keys()])
@@ -83,4 +96,14 @@ def build_sankey(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if "Shortfall" in nodes:
         ordered_nodes = ["Shortfall"] + ordered_nodes
 
-    return {"nodes": ordered_nodes, "links": links}
+    node_colors: dict[str, str] = {"Saldo": "#121212", "Net": "#121212"}
+    for category in income_links.keys():
+        node_colors[income_node_name(category)] = income_colors.get(category, "#739c8f")
+    for category in expense_links.keys():
+        node_colors[expense_node_name(category)] = expense_colors.get(category, "#b98c87")
+    if "Savings" in nodes:
+        node_colors["Savings"] = "#5d7d68"
+    if "Shortfall" in nodes:
+        node_colors["Shortfall"] = "#9b6666"
+
+    return {"nodes": ordered_nodes, "links": links, "node_colors": node_colors}

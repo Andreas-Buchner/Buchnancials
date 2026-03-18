@@ -6,6 +6,10 @@ class RuleCreate(BaseModel):
     match_field: str
     match_type: str
     match_value: str = Field(min_length=1)
+    second_match_field: str | None = None
+    second_match_type: str | None = None
+    second_match_value: str | None = Field(default=None, min_length=1)
+    condition_operator: str = "and"
     counterparty_filter: str | None = None
     amount_sign: str = "any"
     category_id: int | None = None
@@ -18,7 +22,11 @@ class RulePatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     match_field: str | None = None
     match_type: str | None = None
-    match_value: str | None = None
+    match_value: str | None = Field(default=None, min_length=1)
+    second_match_field: str | None = None
+    second_match_type: str | None = None
+    second_match_value: str | None = Field(default=None, min_length=1)
+    condition_operator: str | None = None
     counterparty_filter: str | None = None
     amount_sign: str | None = None
     category_id: int | None = None

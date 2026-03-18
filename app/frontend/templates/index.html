@@ -15,9 +15,9 @@
   <details class="year-block" {% if year.is_current_year %}open{% endif %}>
     <summary>
       <strong>{{ year.year }}</strong>
-      <span class="summary-pill income">Einnahmen {{ "%.2f"|format(year.summary.total_income) }}</span>
-      <span class="summary-pill expense">Ausgaben {{ "%.2f"|format(year.summary.total_expenses) }}</span>
-      <span class="summary-pill">Saldo {{ "%.2f"|format(year.summary.net_cash_flow) }}</span>
+      <span class="summary-pill income">Einnahmen {{ year.summary.total_income|eur }}</span>
+      <span class="summary-pill expense">Ausgaben {{ year.summary.total_expenses|eur }}</span>
+      <span class="summary-pill">Saldo {{ year.summary.net_cash_flow|eur }}</span>
     </summary>
     <div class="sankey-container">
       <div class="sankey-chart year-sankey" data-sankey='{{ year.sankey | tojson }}'></div>
@@ -26,9 +26,9 @@
     <details class="quarter-block" {% if quarter.is_current_quarter %}open{% endif %}>
       <summary>
         <strong>Quartal {{ quarter.quarter }}</strong>
-        <span class="summary-pill income">Einnahmen {{ "%.2f"|format(quarter.summary.total_income) }}</span>
-        <span class="summary-pill expense">Ausgaben {{ "%.2f"|format(quarter.summary.total_expenses) }}</span>
-        <span class="summary-pill">Saldo {{ "%.2f"|format(quarter.summary.net_cash_flow) }}</span>
+        <span class="summary-pill income">Einnahmen {{ quarter.summary.total_income|eur }}</span>
+        <span class="summary-pill expense">Ausgaben {{ quarter.summary.total_expenses|eur }}</span>
+        <span class="summary-pill">Saldo {{ quarter.summary.net_cash_flow|eur }}</span>
       </summary>
       <div class="sankey-container">
         <div class="sankey-chart quarter-sankey" data-sankey='{{ quarter.sankey | tojson }}'></div>
@@ -37,21 +37,21 @@
       <details class="month-block" {% if month.is_current_month %}open{% endif %}>
         <summary>
           <strong>{{ year.year }}-{{ "%02d"|format(month.month) }}</strong>
-          <span class="summary-pill income">Einnahmen {{ "%.2f"|format(month.summary.total_income) }}</span>
-          <span class="summary-pill expense">Ausgaben {{ "%.2f"|format(month.summary.total_expenses) }}</span>
-          <span class="summary-pill">Saldo {{ "%.2f"|format(month.summary.net_cash_flow) }}</span>
+          <span class="summary-pill income">Einnahmen {{ month.summary.total_income|eur }}</span>
+          <span class="summary-pill expense">Ausgaben {{ month.summary.total_expenses|eur }}</span>
+          <span class="summary-pill">Saldo {{ month.summary.net_cash_flow|eur }}</span>
         </summary>
         <div class="sankey-container">
           <div class="sankey-chart month-sankey" data-sankey='{{ month.sankey | tojson }}'></div>
         </div>
         <div class="table-wrap">
-          <table class="tx-table">
+          <table class="tx-table tx-table-main">
             <thead>
               <tr>
                 <th>Datum</th>
                 <th>Betrag</th>
                 <th>Beschreibung</th>
-                <th>Gegenpartei</th>
+                <th>Auftraggeber</th>
                 <th>Notiz</th>
                 <th>Kategorie</th>
                 <th>Aufteilung</th>
@@ -66,41 +66,41 @@
                 data-transaction-amount="{{ "%.2f"|format(tx.amount) }}"
                 data-splits='{{ tx.splits | tojson }}'
               >
-                <td>{{ tx.booking_date }}</td>
-                <td class="{% if tx.amount >= 0 %}amount-positive{% else %}amount-negative{% endif %}">
+                <td data-label="Datum">{{ tx.booking_date }}</td>
+                <td data-label="Betrag" class="{% if tx.amount >= 0 %}amount-positive{% else %}amount-negative{% endif %}">
                   {{ "%.2f"|format(tx.amount) }}
                 </td>
-                <td>{{ tx.description }}</td>
-                <td>{{ tx.counterparty_name or "" }}</td>
-                <td>
+                <td data-label="Beschreibung">{{ tx.description }}</td>
+                <td data-label="Auftraggeber">{{ tx.counterparty_name or "" }}</td>
+                <td data-label="Notiz">
                   <input
                     type="text"
-                    class="tx-memo"
+                    class="tx-memo tx-memo-input"
                     value="{{ tx.memo or '' }}"
                     data-initial="{{ tx.memo or '' }}"
                   />
                 </td>
-                <td>
+                <td data-label="Kategorie">
                   <select
-                    class="tx-category"
+                    class="tx-category tx-category-select"
                     data-initial="{{ tx.category_id if tx.category_id is not none else '' }}"
                   >
-                    <option value="">Nicht kategorisiert</option>
+                    <option value="">Ohne Kategorie</option>
                     {% for category in categories %}
                     {% if (tx.amount >= 0 and category.type == 'income') or (tx.amount < 0 and category.type == 'expense') or tx.category_id == category.id %}
-                    <option value="{{ category.id }}" {% if tx.category_id == category.id %}selected{% endif %}>
+                    <option value="{{ category.id }}" data-color="{{ category.color or '' }}" {% if tx.category_id == category.id %}selected{% endif %}>
                       {{ category.name }} ({% if category.type == 'income' %}Einnahmen{% else %}Ausgaben{% endif %}{% if not category.active %}, inaktiv{% endif %})
                     </option>
                     {% endif %}
                     {% endfor %}
                   </select>
                 </td>
-                <td>
+                <td data-label="Aufteilung">
                   <button class="btn-secondary split-manage-btn" data-transaction-id="{{ tx.id }}">
                     {% if tx.splits %}{{ tx.splits|length }} Posten{% else %}Aufteilen{% endif %}
                   </button>
                 </td>
-                <td>
+                <td data-label="Ignorieren">
                   <input
                     type="checkbox"
                     class="tx-excluded"
@@ -120,7 +120,7 @@
                       <button class="btn-secondary split-cancel">Abbrechen</button>
                     </div>
                     <small class="split-hint">
-                      Die Summe der Teilbeträge muss exakt dem Transaktionsbetrag entsprechen.
+                      Die Summe der Teilbeträge muss exakt dem Transaktionsbetrag entsprechen. Einzelne Teilzeilen können ignoriert werden.
                     </small>
                   </div>
                 </td>

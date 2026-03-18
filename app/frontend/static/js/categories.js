@@ -6,11 +6,18 @@
   const createIncomeBtn = document.getElementById("create-income-category-btn");
   const newExpenseInput = document.getElementById("new-expense-category-name");
   const newIncomeInput = document.getElementById("new-income-category-name");
+  const newExpenseColorInput = document.getElementById("new-expense-category-color");
+  const newIncomeColorInput = document.getElementById("new-income-category-color");
+  const defaultColorByType = {
+    expense: "#b88f7b",
+    income: "#6d97ad",
+  };
 
   function renderCategoryRow(category) {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td><input type="text" class="cat-name" value="${category.name}" /></td>
+      <td><input type="color" class="cat-color" value="${category.color || defaultColorByType[category.type] || "#7f8c99"}" /></td>
       <td><input type="checkbox" class="cat-active" ${category.active ? "checked" : ""} /></td>
       <td><button class="btn-secondary cat-save">Speichern</button></td>
     `;
@@ -20,6 +27,7 @@
         const payload = {
           name: row.querySelector(".cat-name").value,
           type: category.type,
+          color: row.querySelector(".cat-color").value,
           active: row.querySelector(".cat-active").checked,
         };
         await window.Buchnancials.jsonFetch(`/categories/${category.id}`, {
@@ -49,7 +57,7 @@
       .forEach((category) => incomeBody.appendChild(renderCategoryRow(category)));
   }
 
-  async function createCategory(type, input) {
+  async function createCategory(type, input, colorInput) {
     const name = input.value.trim();
     if (!name) {
       window.Buchnancials.notify("Bitte einen Kategorienamen eingeben.", "error");
@@ -58,15 +66,18 @@
     await window.Buchnancials.jsonFetch("/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, type, active: true }),
+      body: JSON.stringify({ name, type, color: colorInput?.value || defaultColorByType[type], active: true }),
     });
-    input.value = "";
+      input.value = "";
+      if (colorInput) {
+        colorInput.value = defaultColorByType[type];
+      }
     await loadCategories();
   }
 
   createExpenseBtn.addEventListener("click", async () => {
     try {
-      await createCategory("expense", newExpenseInput);
+      await createCategory("expense", newExpenseInput, newExpenseColorInput);
     } catch (err) {
       window.Buchnancials.notify(err.message, "error");
     }
@@ -74,7 +85,7 @@
 
   createIncomeBtn.addEventListener("click", async () => {
     try {
-      await createCategory("income", newIncomeInput);
+      await createCategory("income", newIncomeInput, newIncomeColorInput);
     } catch (err) {
       window.Buchnancials.notify(err.message, "error");
     }

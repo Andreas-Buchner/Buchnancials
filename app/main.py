@@ -10,6 +10,7 @@ from app.api.routes_categories import router as categories_router
 from app.api.routes_import import router as import_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_rules import router as rules_router
+from app.api.routes_snapshot import router as snapshot_router
 from app.api.routes_transactions import router as transactions_router
 from app.core.config import get_settings
 from app.core.db import get_connection, init_db
@@ -21,10 +22,20 @@ app = FastAPI(title="Buchnancials")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+
+def format_eur_compact(value: float | int | None) -> str:
+    amount = int(round(float(value or 0)))
+    formatted = f"{amount:,}".replace(",", " ")
+    return f"{formatted} €"
+
+
+templates.env.filters["eur"] = format_eur_compact
+
 app.include_router(import_router)
 app.include_router(transactions_router)
 app.include_router(categories_router)
 app.include_router(rules_router)
+app.include_router(snapshot_router)
 app.include_router(reports_router)
 
 

@@ -85,8 +85,10 @@ def get_transaction_splits(transaction_id: int) -> dict:
               ts.transaction_id,
               ts.category_id,
               ts.amount,
+              ts.excluded,
               c.name AS category_name,
-              c.type AS category_type
+              c.type AS category_type,
+              c.color AS category_color
             FROM transaction_splits ts
             LEFT JOIN categories c ON c.id = ts.category_id
             WHERE ts.transaction_id = ?
@@ -127,10 +129,10 @@ def replace_transaction_splits(transaction_id: int, payload: TransactionSplitUpd
         for split in payload.splits:
             conn.execute(
                 """
-                INSERT INTO transaction_splits(transaction_id, category_id, amount, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO transaction_splits(transaction_id, category_id, amount, excluded, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (transaction_id, split.category_id, float(split.amount), now, now),
+                (transaction_id, split.category_id, float(split.amount), int(bool(split.excluded)), now, now),
             )
         conn.execute("UPDATE transactions SET updated_at = ? WHERE id = ?", (now, transaction_id))
         conn.commit()
@@ -167,4 +169,3 @@ def patch_transaction(transaction_id: int, payload: TransactionPatch) -> dict:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         updated = _fetch_transaction(conn, transaction_id)
     return updated
-

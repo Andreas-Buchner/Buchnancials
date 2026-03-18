@@ -8,16 +8,33 @@ from app.models.category import CategoryCreate, CategoryPatch
 router = APIRouter(tags=["categories"])
 
 
+def _normalize_color(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if not cleaned.startswith("#"):
+        cleaned = f"#{cleaned}"
+    if len(cleaned) != 7:
+        raise HTTPException(status_code=400, detail="Category color must be in #RRGGBB format.")
+    try:
+        int(cleaned[1:], 16)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Category color must be valid hex (#RRGGBB).") from exc
+    return cleaned.lower()
+
+
 @router.get("/categories")
 def get_categories(include_inactive: bool = Query(default=True)) -> list[dict]:
     with get_connection() as conn:
         if include_inactive:
             rows = conn.execute(
-                "SELECT id, name, type, active, created_at, updated_at FROM categories ORDER BY type, name"
+                "SELECT id, name, type, color, active, created_at, updated_at FROM categories ORDER BY type, name"
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, name, type, active, created_at, updated_at FROM categories WHERE active = 1 ORDER BY type, name"
+                "SELECT id, name, type, color, active, created_at, updated_at FROM categories WHERE active = 1 ORDER BY type, name"
             ).fetchall()
     return [dict(row) for row in rows]
 
@@ -31,14 +48,14 @@ def create_category(payload: CategoryCreate) -> dict:
     with get_connection() as conn:
         cur = conn.execute(
             """
-            INSERT INTO categories(name, type, active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO categories(name, type, color, active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (payload.name.strip(), payload.type, int(payload.active), now, now),
+            (payload.name.strip(), payload.type, _normalize_color(payload.color), int(payload.active), now, now),
         )
         conn.commit()
         row = conn.execute(
-            "SELECT id, name, type, active, created_at, updated_at FROM categories WHERE id = ?",
+            "SELECT id, name, type, color, active, created_at, updated_at FROM categories WHERE id = ?",
             (cur.lastrowid,),
         ).fetchone()
     return dict(row)
@@ -59,6 +76,8 @@ def update_category(category_id: int, payload: CategoryPatch) -> dict:
         fields.append(f"{key} = ?")
         if isinstance(value, bool):
             values.append(int(value))
+        elif key == "color" and isinstance(value, str):
+            values.append(_normalize_color(value))
         elif isinstance(value, str):
             values.append(value.strip())
         else:
@@ -75,11 +94,10 @@ def update_category(category_id: int, payload: CategoryPatch) -> dict:
                 raise HTTPException(status_code=404, detail="Category not found.")
             conn.commit()
             row = conn.execute(
-                "SELECT id, name, type, active, created_at, updated_at FROM categories WHERE id = ?",
+                "SELECT id, name, type, color, active, created_at, updated_at FROM categories WHERE id = ?",
                 (category_id,),
             ).fetchone()
         except sqlite3.IntegrityError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return dict(row)
-

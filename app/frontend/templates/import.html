@@ -25,6 +25,23 @@
     <table id="preview-table" class="tx-table"></table>
   </div>
 </section>
+
+<section class="panel">
+  <h3>Daten-Snapshot</h3>
+  <p class="hint-text">
+    Exportiere die komplette lokale Datenbank als Datei und importiere sie auf einem anderen Rechner wieder.
+  </p>
+  <div class="stack">
+    <a href="/snapshot/export" class="btn-secondary">Snapshot exportieren</a>
+  </div>
+  <div class="stack">
+    <label for="snapshot-file">Snapshot-Datei importieren</label>
+    <input id="snapshot-file" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" />
+    <button id="snapshot-import-btn" class="btn-secondary">Snapshot importieren</button>
+  </div>
+  <p class="hint-text">Beim Import werden vorhandene Daten komplett ersetzt.</p>
+</section>
+
 <div id="import-result-modal" class="decision-backdrop" hidden>
   <div class="decision-modal center-message-modal">
     <h3 id="import-result-title">Import abgeschlossen</h3>

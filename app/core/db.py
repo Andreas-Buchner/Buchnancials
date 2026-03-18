@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+  color TEXT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -32,6 +33,10 @@ CREATE TABLE IF NOT EXISTS rules (
   match_field TEXT NOT NULL CHECK (match_field IN ('description', 'counterparty_name', 'raw_text')),
   match_type TEXT NOT NULL,
   match_value TEXT NOT NULL,
+  second_match_field TEXT NULL CHECK (second_match_field IN ('description', 'counterparty_name', 'raw_text')),
+  second_match_type TEXT NULL,
+  second_match_value TEXT NULL,
+  condition_operator TEXT NOT NULL DEFAULT 'and' CHECK (condition_operator IN ('and', 'or')),
   counterparty_filter TEXT NULL,
   amount_sign TEXT NOT NULL DEFAULT 'any' CHECK (amount_sign IN ('any', 'positive', 'negative')),
   category_id INTEGER NULL REFERENCES categories(id),
@@ -66,6 +71,7 @@ CREATE TABLE IF NOT EXISTS transaction_splits (
   transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
   category_id INTEGER NOT NULL REFERENCES categories(id),
   amount REAL NOT NULL,
+  excluded INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -93,20 +99,47 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
     migrate_schema(conn)
     seed_default_categories(conn)
+    migrate_default_category_names(conn)
     conn.commit()
 
 
 def migrate_schema(conn: sqlite3.Connection) -> None:
-    columns = {
+    category_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(categories)").fetchall()
+    }
+    if "color" not in category_columns:
+        conn.execute("ALTER TABLE categories ADD COLUMN color TEXT NULL")
+
+    rule_columns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(rules)").fetchall()
     }
-    if "counterparty_filter" not in columns:
+    if "counterparty_filter" not in rule_columns:
         conn.execute("ALTER TABLE rules ADD COLUMN counterparty_filter TEXT NULL")
-    if "amount_sign" not in columns:
+    if "amount_sign" not in rule_columns:
         conn.execute(
             "ALTER TABLE rules ADD COLUMN amount_sign TEXT NOT NULL DEFAULT 'any' CHECK (amount_sign IN ('any', 'positive', 'negative'))"
         )
+    if "second_match_field" not in rule_columns:
+        conn.execute(
+            "ALTER TABLE rules ADD COLUMN second_match_field TEXT NULL CHECK (second_match_field IN ('description', 'counterparty_name', 'raw_text'))"
+        )
+    if "second_match_type" not in rule_columns:
+        conn.execute("ALTER TABLE rules ADD COLUMN second_match_type TEXT NULL")
+    if "second_match_value" not in rule_columns:
+        conn.execute("ALTER TABLE rules ADD COLUMN second_match_value TEXT NULL")
+    if "condition_operator" not in rule_columns:
+        conn.execute(
+            "ALTER TABLE rules ADD COLUMN condition_operator TEXT NOT NULL DEFAULT 'and' CHECK (condition_operator IN ('and', 'or'))"
+        )
+
+    split_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(transaction_splits)").fetchall()
+    }
+    if "excluded" not in split_columns:
+        conn.execute("ALTER TABLE transaction_splits ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
 
 
 def seed_default_categories(conn: sqlite3.Connection) -> None:
@@ -116,17 +149,60 @@ def seed_default_categories(conn: sqlite3.Connection) -> None:
 
     now = utc_now_iso()
     default_categories = [
-        ("Salary", "income", 1, now, now),
-        ("Food", "expense", 1, now, now),
-        ("Rent", "expense", 1, now, now),
+        ("Gehalt", "income", "#6d97ad", 1, now, now),
+        ("Lebensmittel", "expense", "#b88f7b", 1, now, now),
+        ("Miete", "expense", "#8d82ac", 1, now, now),
     ]
     conn.executemany(
         """
-        INSERT INTO categories(name, type, active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO categories(name, type, color, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         default_categories,
     )
+
+
+def migrate_default_category_names(conn: sqlite3.Connection) -> None:
+    now = utc_now_iso()
+    translations = [
+        ("Salary", "Gehalt", "income"),
+        ("Food", "Lebensmittel", "expense"),
+        ("Rent", "Miete", "expense"),
+    ]
+    for english, german, category_type in translations:
+        english_row = conn.execute(
+            "SELECT id FROM categories WHERE name = ? AND type = ? ORDER BY id LIMIT 1",
+            (english, category_type),
+        ).fetchone()
+        if english_row is None:
+            continue
+
+        german_exists = conn.execute(
+            "SELECT 1 FROM categories WHERE name = ? AND type = ? LIMIT 1",
+            (german, category_type),
+        ).fetchone()
+        if german_exists is not None:
+            continue
+
+        conn.execute(
+            "UPDATE categories SET name = ?, updated_at = ? WHERE id = ?",
+            (german, now, english_row["id"]),
+        )
+
+    default_colors = {
+        ("Gehalt", "income"): "#6d97ad",
+        ("Lebensmittel", "expense"): "#b88f7b",
+        ("Miete", "expense"): "#8d82ac",
+    }
+    for (name, category_type), color in default_colors.items():
+        conn.execute(
+            """
+            UPDATE categories
+            SET color = ?, updated_at = ?
+            WHERE name = ? AND type = ? AND (color IS NULL OR TRIM(color) = '')
+            """,
+            (color, now, name, category_type),
+        )
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:

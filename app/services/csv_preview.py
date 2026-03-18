@@ -20,6 +20,7 @@ _FIELD_ALIASES: dict[str, list[str]] = {
         "counterpartyname",
         "empfaenger",
         "auftraggeber",
+        "auftraggebername",
         "payee",
         "recipient",
         "sender",
