@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>CSV-Import</h2>
+  <div class="stack">
+    <label for="csv-file">CSV-Datei</label>
+    <input id="csv-file" type="file" accept=".csv,text/csv" />
+    <button id="preview-btn" class="btn-primary">Vorschau laden</button>
+  </div>
+  <div id="progress-section" class="progress-wrap" hidden>
+    <p id="progress-text" class="progress-text">Bitte warten ...</p>
+    <div class="progress-track" aria-live="polite" aria-busy="true">
+      <div id="progress-fill" class="progress-fill"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="preview-section" hidden>
+  <h3>Vorschau & Spaltenzuordnung</h3>
+  <p id="preview-meta"></p>
+  <div id="mapping-container" class="mapping-grid"></div>
+  <button id="execute-import-btn" class="btn-primary">Import starten</button>
+  <div class="table-wrap">
+    <table id="preview-table" class="tx-table"></table>
+  </div>
+</section>
+<div id="import-result-modal" class="decision-backdrop" hidden>
+  <div class="decision-modal center-message-modal">
+    <h3 id="import-result-title">Import abgeschlossen</h3>
+    <p id="import-result-message"></p>
+    <div class="decision-actions">
+      <button id="import-result-close-btn" class="btn-primary">Schließen</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/import.js"></script>
+{% endblock %}

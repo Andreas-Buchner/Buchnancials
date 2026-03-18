@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Kategorien</h2>
+  <div class="category-columns">
+    <div>
+      <h3>Ausgabenkategorien</h3>
+      <div class="stack-inline">
+        <input type="text" id="new-expense-category-name" placeholder="Neue Ausgabenkategorie" />
+        <button id="create-expense-category-btn" class="btn-primary">Kategorie anlegen</button>
+      </div>
+    </div>
+    <div>
+      <h3>Einnahmekategorien</h3>
+      <div class="stack-inline">
+        <input type="text" id="new-income-category-name" placeholder="Neue Einnahmekategorie" />
+        <button id="create-income-category-btn" class="btn-primary">Kategorie anlegen</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="category-columns">
+    <div>
+      <h3>Ausgaben</h3>
+      <table class="tx-table" id="expense-categories-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Aktiv</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Einnahmen</h3>
+      <table class="tx-table" id="income-categories-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Aktiv</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/categories.js"></script>
+{% endblock %}

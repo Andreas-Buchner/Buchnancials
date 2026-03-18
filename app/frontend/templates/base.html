@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buchnancials</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a href="/" class="brand-link" data-nav-link>
+          <img src="/static/img/logo.png" alt="Buchnancials-Logo" class="brand-logo" />
+          <h1>Buchnancials</h1>
+        </a>
+        <nav>
+          <a href="/" data-nav-link>Transaktionen</a>
+          <a href="/import" data-nav-link>Import</a>
+          <a href="/categories/manage" data-nav-link>Kategorien</a>
+          <a href="/rules/manage" data-nav-link>Regeln</a>
+        </nav>
+      </div>
+    </header>
+    <main class="page-container">{% block content %}{% endblock %}</main>
+    {% if plotly_js %}
+    <script>{{ plotly_js | safe }}</script>
+    {% endif %}
+    <script src="/static/js/common.js"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

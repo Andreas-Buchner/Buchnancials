@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Regeln</h2>
+  <div class="rule-form-grid">
+    <input type="text" id="rule-name" placeholder="Regelname" />
+    <select id="rule-field">
+      <option value="description">Beschreibung</option>
+      <option value="counterparty_name">Gegenpartei</option>
+      <option value="raw_text">Buchungstext (roh)</option>
+    </select>
+    <select id="rule-type">
+      <option value="contains">enthält</option>
+      <option value="equals">entspricht</option>
+      <option value="starts_with">beginnt mit</option>
+      <option value="regex">Muster (RegEx)</option>
+    </select>
+    <input type="text" id="rule-value" placeholder="Suchwert" />
+    <input type="text" id="rule-counterparty-filter" placeholder="Gegenpartei enthält (optional)" />
+    <select id="rule-amount-sign">
+      <option value="any">Betrag: alle</option>
+      <option value="negative">Betrag: nur Ausgaben</option>
+      <option value="positive">Betrag: nur Einnahmen</option>
+    </select>
+    <select id="rule-category"></select>
+    <label class="inline-checkbox">
+      <input type="checkbox" id="rule-exclude" />
+      Treffer ignorieren
+    </label>
+    <button id="create-rule-btn" class="btn-primary">Regel erstellen</button>
+    <button id="apply-existing-rules-btn" class="btn-secondary">Auf unkategorisierte Buchungen anwenden</button>
+  </div>
+  <p class="hint-text">Alle Filter werden mit UND verknüpft.</p>
+</section>
+
+<section class="panel">
+  <table class="tx-table" id="rules-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Feld</th>
+        <th>Typ</th>
+        <th>Suchwert</th>
+        <th>Gegenpartei enthält</th>
+        <th>Betragsrichtung</th>
+        <th>Kategorie</th>
+        <th>Ignorieren</th>
+        <th>Aktiv</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/rules.js"></script>
+{% endblock %}

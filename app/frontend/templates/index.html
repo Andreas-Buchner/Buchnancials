@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>Transaktionen</h2>
+  </div>
+  {% if not has_transactions %}
+  <div class="empty-state">
+    <p>Noch keine Transaktionen importiert.</p>
+    <a href="/import" class="btn-primary" data-nav-link>Zum Import</a>
+  </div>
+  {% endif %}
+  {% for year in years %}
+  <details class="year-block" {% if year.is_current_year %}open{% endif %}>
+    <summary>
+      <strong>{{ year.year }}</strong>
+      <span class="summary-pill income">Einnahmen {{ "%.2f"|format(year.summary.total_income) }}</span>
+      <span class="summary-pill expense">Ausgaben {{ "%.2f"|format(year.summary.total_expenses) }}</span>
+      <span class="summary-pill">Saldo {{ "%.2f"|format(year.summary.net_cash_flow) }}</span>
+    </summary>
+    <div class="sankey-container">
+      <div class="sankey-chart year-sankey" data-sankey='{{ year.sankey | tojson }}'></div>
+    </div>
+    {% for quarter in year.quarters %}
+    <details class="quarter-block" {% if quarter.is_current_quarter %}open{% endif %}>
+      <summary>
+        <strong>Quartal {{ quarter.quarter }}</strong>
+        <span class="summary-pill income">Einnahmen {{ "%.2f"|format(quarter.summary.total_income) }}</span>
+        <span class="summary-pill expense">Ausgaben {{ "%.2f"|format(quarter.summary.total_expenses) }}</span>
+        <span class="summary-pill">Saldo {{ "%.2f"|format(quarter.summary.net_cash_flow) }}</span>
+      </summary>
+      <div class="sankey-container">
+        <div class="sankey-chart quarter-sankey" data-sankey='{{ quarter.sankey | tojson }}'></div>
+      </div>
+      {% for month in quarter.months %}
+      <details class="month-block" {% if month.is_current_month %}open{% endif %}>
+        <summary>
+          <strong>{{ year.year }}-{{ "%02d"|format(month.month) }}</strong>
+          <span class="summary-pill income">Einnahmen {{ "%.2f"|format(month.summary.total_income) }}</span>
+          <span class="summary-pill expense">Ausgaben {{ "%.2f"|format(month.summary.total_expenses) }}</span>
+          <span class="summary-pill">Saldo {{ "%.2f"|format(month.summary.net_cash_flow) }}</span>
+        </summary>
+        <div class="sankey-container">
+          <div class="sankey-chart month-sankey" data-sankey='{{ month.sankey | tojson }}'></div>
+        </div>
+        <div class="table-wrap">
+          <table class="tx-table">
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Betrag</th>
+                <th>Beschreibung</th>
+                <th>Gegenpartei</th>
+                <th>Notiz</th>
+                <th>Kategorie</th>
+                <th>Aufteilung</th>
+                <th>Ignorieren</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in month.transactions %}
+              <tr
+                class="tx-row"
+                data-transaction-id="{{ tx.id }}"
+                data-transaction-amount="{{ "%.2f"|format(tx.amount) }}"
+                data-splits='{{ tx.splits | tojson }}'
+              >
+                <td>{{ tx.booking_date }}</td>
+                <td class="{% if tx.amount >= 0 %}amount-positive{% else %}amount-negative{% endif %}">
+                  {{ "%.2f"|format(tx.amount) }}
+                </td>
+                <td>{{ tx.description }}</td>
+                <td>{{ tx.counterparty_name or "" }}</td>
+                <td>
+                  <input
+                    type="text"
+                    class="tx-memo"
+                    value="{{ tx.memo or '' }}"
+                    data-initial="{{ tx.memo or '' }}"
+                  />
+                </td>
+                <td>
+                  <select
+                    class="tx-category"
+                    data-initial="{{ tx.category_id if tx.category_id is not none else '' }}"
+                  >
+                    <option value="">Nicht kategorisiert</option>
+                    {% for category in categories %}
+                    {% if (tx.amount >= 0 and category.type == 'income') or (tx.amount < 0 and category.type == 'expense') or tx.category_id == category.id %}
+                    <option value="{{ category.id }}" {% if tx.category_id == category.id %}selected{% endif %}>
+                      {{ category.name }} ({% if category.type == 'income' %}Einnahmen{% else %}Ausgaben{% endif %}{% if not category.active %}, inaktiv{% endif %})
+                    </option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <button class="btn-secondary split-manage-btn" data-transaction-id="{{ tx.id }}">
+                    {% if tx.splits %}{{ tx.splits|length }} Posten{% else %}Aufteilen{% endif %}
+                  </button>
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    class="tx-excluded"
+                    {% if tx.excluded %}checked{% endif %}
+                    data-initial="{{ 1 if tx.excluded else 0 }}"
+                  />
+                </td>
+              </tr>
+              <tr class="split-editor-row" data-split-editor-for="{{ tx.id }}" hidden>
+                <td colspan="8">
+                  <div class="split-editor">
+                    <div class="split-lines"></div>
+                    <p class="split-balance"></p>
+                    <div class="split-editor-actions">
+                      <button class="btn-secondary split-add-line">Teilzeile hinzufügen</button>
+                      <button class="btn-primary split-save">Aufteilung speichern</button>
+                      <button class="btn-secondary split-cancel">Abbrechen</button>
+                    </div>
+                    <small class="split-hint">
+                      Die Summe der Teilbeträge muss exakt dem Transaktionsbetrag entsprechen.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </details>
+    {% endfor %}
+  </details>
+  {% endfor %}
+</section>
+{% if has_transactions %}
+<aside class="sticky-save-bar">
+  <span id="unsaved-indicator" class="unsaved-indicator">Ungespeicherte Änderungen: 0</span>
+  <div class="actions">
+    <button id="discard-staged-btn" class="btn-secondary">Änderungen verwerfen</button>
+    <button id="save-staged-btn" class="btn-primary">Änderungen speichern</button>
+  </div>
+</aside>
+{% endif %}
+<div id="decision-modal" class="decision-backdrop" hidden>
+  <div class="decision-modal">
+    <h3 id="decision-title">Ungespeicherte Änderungen</h3>
+    <p id="decision-message"></p>
+    <div id="decision-actions" class="decision-actions"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/transactions.js"></script>
+{% endblock %}
