@@ -112,3 +112,8 @@ def categories_page(request: Request):
 @app.get("/rules/manage", response_class=HTMLResponse)
 def rules_page(request: Request):
     return templates.TemplateResponse("rules.html", {"request": request})
+
+
+@app.get("/planning", response_class=HTMLResponse)
+def planning_page(request: Request):
+    return templates.TemplateResponse("planning.html", {"request": request, "plotly_js": get_plotlyjs()})

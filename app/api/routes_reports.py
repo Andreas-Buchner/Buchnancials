@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query
 
 from app.core.db import get_connection
 from app.services.reporting import (
+    build_planning_dataset,
     list_transactions_for_period,
     month_bounds,
     quarter_bounds,
@@ -60,3 +61,9 @@ def reports_sankey_yearly(year: int = Query(...)) -> dict:
         rows = list_transactions_for_period(conn, start, end)
     return {"period": {"year": year}, "sankey": build_sankey(rows)}
 
+
+@router.get("/reports/planning")
+def reports_planning(top_n_categories: int = Query(8, ge=3, le=20)) -> dict:
+    with get_connection() as conn:
+        payload = build_planning_dataset(conn, top_n_categories=top_n_categories)
+    return payload

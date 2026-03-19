@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS transaction_splits (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
-  category_id INTEGER NOT NULL REFERENCES categories(id),
+  category_id INTEGER NULL REFERENCES categories(id),
   amount REAL NOT NULL,
   excluded INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -140,6 +140,34 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     }
     if "excluded" not in split_columns:
         conn.execute("ALTER TABLE transaction_splits ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+
+    split_info = {
+        row["name"]: row
+        for row in conn.execute("PRAGMA table_info(transaction_splits)").fetchall()
+    }
+    category_col = split_info.get("category_id")
+    if category_col is not None and int(category_col["notnull"]) == 1:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.executescript(
+            """
+            ALTER TABLE transaction_splits RENAME TO transaction_splits_old;
+            CREATE TABLE transaction_splits (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+              category_id INTEGER NULL REFERENCES categories(id),
+              amount REAL NOT NULL,
+              excluded INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            INSERT INTO transaction_splits(id, transaction_id, category_id, amount, excluded, created_at, updated_at)
+            SELECT id, transaction_id, category_id, amount, excluded, created_at, updated_at
+            FROM transaction_splits_old;
+            DROP TABLE transaction_splits_old;
+            CREATE INDEX IF NOT EXISTS idx_transaction_splits_transaction_id ON transaction_splits(transaction_id);
+            """
+        )
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def seed_default_categories(conn: sqlite3.Connection) -> None:

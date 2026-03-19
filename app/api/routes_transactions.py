@@ -106,6 +106,9 @@ def replace_transaction_splits(transaction_id: int, payload: TransactionSplitUpd
         if tx is None:
             raise HTTPException(status_code=404, detail="Transaction not found.")
 
+        if len(payload.splits) == 1:
+            raise HTTPException(status_code=400, detail="A split transaction must contain at least 2 split lines.")
+
         tx_amount = round(float(tx["amount"]), 2)
         split_total = round(sum(float(split.amount) for split in payload.splits), 2)
         if payload.splits and abs(split_total - tx_amount) > 0.01:
@@ -114,7 +117,7 @@ def replace_transaction_splits(transaction_id: int, payload: TransactionSplitUpd
                 detail=f"Split total ({split_total:.2f}) must equal transaction amount ({tx_amount:.2f}).",
             )
 
-        category_ids = {split.category_id for split in payload.splits}
+        category_ids = {split.category_id for split in payload.splits if split.category_id is not None}
         if category_ids:
             placeholders = ",".join("?" for _ in category_ids)
             existing = conn.execute(

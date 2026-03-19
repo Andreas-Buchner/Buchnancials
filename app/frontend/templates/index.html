@@ -80,7 +80,7 @@
                     data-initial="{{ tx.memo or '' }}"
                   />
                 </td>
-                <td data-label="Kategorie">
+                <td data-label="Kategorie" class="tx-category-cell">
                   <select
                     class="tx-category tx-category-select"
                     data-initial="{{ tx.category_id if tx.category_id is not none else '' }}"
@@ -94,11 +94,13 @@
                     {% endif %}
                     {% endfor %}
                   </select>
+                  <div class="tx-split-category-note" hidden></div>
                 </td>
-                <td data-label="Aufteilung">
+                <td data-label="Aufteilung" class="tx-split-cell">
                   <button class="btn-secondary split-manage-btn" data-transaction-id="{{ tx.id }}">
-                    {% if tx.splits %}{{ tx.splits|length }} Posten{% else %}Aufteilen{% endif %}
+                    {% if tx.splits and tx.splits|length > 1 %}{{ tx.splits|length }} Posten{% else %}Aufteilen{% endif %}
                   </button>
+                  <ul class="split-preview-list" hidden></ul>
                 </td>
                 <td data-label="Ignorieren">
                   <input
@@ -120,7 +122,8 @@
                       <button class="btn-secondary split-cancel">Abbrechen</button>
                     </div>
                     <small class="split-hint">
-                      Die Summe der Teilbeträge muss exakt dem Transaktionsbetrag entsprechen. Einzelne Teilzeilen können ignoriert werden.
+                      Eine Aufteilung braucht mindestens 2 Posten. Die Summe der Teilbeträge muss exakt dem Transaktionsbetrag entsprechen.
+                      Einzelne Teilzeilen können ignoriert werden. Wenn alle Teilzeilen entfernt werden, wird die Aufteilung aufgehoben.
                     </small>
                   </div>
                 </td>

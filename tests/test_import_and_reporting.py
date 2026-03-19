@@ -3,7 +3,7 @@ import sqlite3
 from app.core.db import init_db
 from app.services.categorization import apply_active_rules_to_transactions
 from app.services.csv_import import execute_import
-from app.services.reporting import list_transactions_for_period, summarize
+from app.services.reporting import build_planning_dataset, list_transactions_for_period, summarize
 from app.services.sankey import build_sankey
 
 
@@ -232,3 +232,69 @@ def test_apply_rules_to_existing_only_updates_uncategorized():
     assert rows[1]["category_id"] == rent_id
     assert rows[2]["description"] == "Bakery"
     assert rows[2]["category_id"] is None
+
+
+def test_build_planning_dataset_uses_splits_and_returns_overview():
+    conn = _conn()
+    now = "2026-03-18T00:00:00+00:00"
+    food_id = conn.execute("SELECT id FROM categories WHERE name = 'Lebensmittel'").fetchone()["id"]
+    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Miete'").fetchone()["id"]
+
+    conn.execute(
+        """
+        INSERT INTO import_jobs(filename, column_mapping_json, row_count, new_row_count, duplicate_row_count, failed_row_count, imported_at)
+        VALUES ('planning.csv', '{}', 4, 4, 0, 0, ?)
+        """,
+        (now,),
+    )
+    import_job_id = conn.execute("SELECT id FROM import_jobs ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    conn.executemany(
+        """
+        INSERT INTO transactions(
+            booking_date, value_date, amount, currency, counterparty_name, description,
+            raw_text, memo, category_id, excluded, dedupe_key, import_job_id, raw_data_json,
+            created_at, updated_at
+        )
+        VALUES (?, NULL, ?, 'EUR', NULL, ?, NULL, NULL, ?, ?, ?, ?, '{}', ?, ?)
+        """,
+        [
+            ("2026-01-10", 3000.0, "Salary", None, 0, "plan-1", import_job_id, now, now),
+            ("2026-01-15", -100.0, "Split Expense", None, 0, "plan-2", import_job_id, now, now),
+            ("2026-02-03", -80.0, "Rent", rent_id, 0, "plan-3", import_job_id, now, now),
+            ("2026-02-12", -40.0, "Excluded", food_id, 1, "plan-4", import_job_id, now, now),
+        ],
+    )
+
+    split_tx_id = conn.execute(
+        "SELECT id FROM transactions WHERE dedupe_key = 'plan-2'"
+    ).fetchone()["id"]
+    conn.executemany(
+        """
+        INSERT INTO transaction_splits(transaction_id, category_id, amount, excluded, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (split_tx_id, food_id, -30.0, 0, now, now),
+            (split_tx_id, None, -70.0, 0, now, now),
+        ],
+    )
+    conn.commit()
+
+    payload = build_planning_dataset(conn, top_n_categories=6)
+    overview = payload["overview"]
+    assert overview["months_covered"] == 2
+    assert overview["total_income"] == 3000.0
+    assert overview["total_expenses"] == 180.0
+    assert overview["net_cash_flow"] == 2820.0
+    assert overview["total_transactions"] == 3
+
+    month_rows = payload["monthly_totals"]
+    assert month_rows[0]["month"] == "2026-01"
+    assert month_rows[0]["expenses"] == 100.0
+    assert month_rows[1]["month"] == "2026-02"
+    assert month_rows[1]["expenses"] == 80.0
+
+    categories = {row["category"]: row for row in payload["category_totals"]}
+    assert categories["Lebensmittel"]["total_expenses"] == 30.0
+    assert categories["Miete"]["total_expenses"] == 80.0
+    assert categories["Ohne Kategorie"]["total_expenses"] == 70.0

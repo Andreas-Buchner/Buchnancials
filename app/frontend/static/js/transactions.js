@@ -327,27 +327,53 @@
   }
 
   function parseRowSplits(row) {
+    const raw = row.dataset.splits || "[]";
+    if (row._cachedSplitsRaw === raw && Array.isArray(row._cachedSplits)) {
+      return row._cachedSplits;
+    }
     try {
-      const splits = JSON.parse(row.dataset.splits || "[]");
+      const splits = JSON.parse(raw);
       if (!Array.isArray(splits) || splits.length === 0) {
+        row._cachedSplitsRaw = raw;
+        row._cachedSplits = [];
         return [];
       }
-      return splits.map((split) => ({
-        amount: Number(split.amount),
-        excluded: Boolean(split.excluded),
-        category_name: normalizeCategoryLabel(split.category_name || "Ohne Kategorie"),
-        category_color: split.category_color || null,
-      }));
+      const parsed = splits
+        .map((split) => ({
+          category_id:
+            split.category_id === null || split.category_id === undefined
+              ? null
+              : Number(split.category_id),
+          amount: Number(split.amount),
+          excluded: Boolean(split.excluded),
+          category_name: normalizeCategoryLabel(split.category_name || "Ohne Kategorie"),
+          category_color: split.category_color || null,
+        }))
+        .filter((split) => Number.isFinite(split.amount));
+      row._cachedSplitsRaw = raw;
+      row._cachedSplits = parsed;
+      return parsed;
     } catch (err) {
+      row._cachedSplitsRaw = raw;
+      row._cachedSplits = [];
       return [];
     }
+  }
+
+  function getEffectiveSplitItems(row) {
+    const splitItems = parseRowSplits(row);
+    return splitItems.length > 1 ? splitItems : [];
+  }
+
+  function roundMoney(value) {
+    return Number(Number(value).toFixed(2));
   }
 
   function collectMonthRows(monthBlock) {
     const rows = [];
     monthBlock.querySelectorAll("tr.tx-row").forEach((row) => {
       const excluded = row.querySelector(".tx-excluded")?.checked || false;
-      const splitItems = parseRowSplits(row);
+      const splitItems = getEffectiveSplitItems(row);
       if (splitItems.length > 0) {
         splitItems.forEach((split) => {
           rows.push({
@@ -380,35 +406,106 @@
     return rows;
   }
 
-  function refreshSankeyFromDom() {
-    document.querySelectorAll(".month-block").forEach((monthBlock) => {
-      const chart = monthBlock.querySelector(".month-sankey");
-      const rows = collectMonthRows(monthBlock);
-      updateSummaryPills(monthBlock, summarizeRows(rows));
-      if (!chart) {
-        return;
-      }
-      renderSankey(chart, buildSankey(rows));
-    });
+  function refreshMonthBlock(monthBlock) {
+    if (!monthBlock) {
+      return;
+    }
+    const rows = collectMonthRows(monthBlock);
+    updateSummaryPills(monthBlock, summarizeRows(rows));
+    const chart = monthBlock.querySelector(".month-sankey");
+    if (!chart || !monthBlock.open) {
+      return;
+    }
+    renderSankey(chart, buildSankey(rows));
+  }
 
-    document.querySelectorAll(".quarter-block").forEach((quarterBlock) => {
-      const chart = quarterBlock.querySelector(".quarter-sankey");
-      const rows = collectRowsInContainer(quarterBlock);
-      updateSummaryPills(quarterBlock, summarizeRows(rows));
-      if (!chart) {
-        return;
-      }
-      renderSankey(chart, buildSankey(rows));
-    });
+  function refreshQuarterBlock(quarterBlock) {
+    if (!quarterBlock) {
+      return;
+    }
+    const rows = collectRowsInContainer(quarterBlock);
+    updateSummaryPills(quarterBlock, summarizeRows(rows));
+    const chart = quarterBlock.querySelector(".quarter-sankey");
+    if (!chart || !quarterBlock.open) {
+      return;
+    }
+    renderSankey(chart, buildSankey(rows));
+  }
 
-    document.querySelectorAll(".year-block").forEach((yearBlock) => {
-      const chart = yearBlock.querySelector(".year-sankey");
-      const rows = collectRowsInContainer(yearBlock);
-      updateSummaryPills(yearBlock, summarizeRows(rows));
-      if (!chart) {
-        return;
-      }
-      renderSankey(chart, buildSankey(rows));
+  function refreshYearBlock(yearBlock) {
+    if (!yearBlock) {
+      return;
+    }
+    const rows = collectRowsInContainer(yearBlock);
+    updateSummaryPills(yearBlock, summarizeRows(rows));
+    const chart = yearBlock.querySelector(".year-sankey");
+    if (!chart || !yearBlock.open) {
+      return;
+    }
+    renderSankey(chart, buildSankey(rows));
+  }
+
+  function refreshHierarchyForMonthBlock(monthBlock) {
+    if (!monthBlock) {
+      return;
+    }
+    refreshMonthBlock(monthBlock);
+    const quarterBlock = monthBlock.closest(".quarter-block");
+    if (quarterBlock) {
+      refreshQuarterBlock(quarterBlock);
+    }
+    const yearBlock = monthBlock.closest(".year-block");
+    if (yearBlock) {
+      refreshYearBlock(yearBlock);
+    }
+  }
+
+  function refreshHierarchyForRow(row) {
+    const monthBlock = row.closest(".month-block");
+    refreshHierarchyForMonthBlock(monthBlock);
+  }
+
+  function expandHierarchyForMonthBlock(monthBlock) {
+    if (!monthBlock) {
+      return;
+    }
+    monthBlock.open = true;
+    const quarterBlock = monthBlock.closest(".quarter-block");
+    if (quarterBlock) {
+      quarterBlock.open = true;
+    }
+    const yearBlock = monthBlock.closest(".year-block");
+    if (yearBlock) {
+      yearBlock.open = true;
+    }
+  }
+
+  function rowNeedsAttention(row) {
+    return row.classList.contains("tx-row-uncategorized") || row.classList.contains("tx-row-dirty");
+  }
+
+  function ensureAttentionExpansionForRow(row) {
+    if (!row || !rowNeedsAttention(row)) {
+      return;
+    }
+    expandHierarchyForMonthBlock(row.closest(".month-block"));
+  }
+
+  function expandAttentionSectionsFromDom() {
+    document.querySelectorAll("tr.tx-row").forEach((row) => {
+      ensureAttentionExpansionForRow(row);
+    });
+  }
+
+  function refreshOpenSankeysFromDom() {
+    document.querySelectorAll(".month-block[open]").forEach((monthBlock) => {
+      refreshMonthBlock(monthBlock);
+    });
+    document.querySelectorAll(".quarter-block[open]").forEach((quarterBlock) => {
+      refreshQuarterBlock(quarterBlock);
+    });
+    document.querySelectorAll(".year-block[open]").forEach((yearBlock) => {
+      refreshYearBlock(yearBlock);
     });
   }
 
@@ -455,6 +552,7 @@
     setFieldDirtyClass(memo, memoDirty);
     setFieldDirtyClass(excluded, excludedDirty);
     row.classList.toggle("tx-row-dirty", categoryDirty || memoDirty || excludedDirty);
+    ensureAttentionExpansionForRow(row);
   }
 
   function setRowInitialStateFromCurrent(row) {
@@ -477,7 +575,99 @@
     const entry = ensureEntry(id);
     entry[field] = value;
     cleanupEntry(id);
-    refreshIndicator();
+  }
+
+  function findSplitEditorRowForTxId(transactionId) {
+    return document.querySelector(`.split-editor-row[data-split-editor-for="${transactionId}"]`);
+  }
+
+  function renderSplitPreview(row, splitItems) {
+    const previewList = row.querySelector(".split-preview-list");
+    if (!previewList) {
+      return;
+    }
+    previewList.textContent = "";
+    if (splitItems.length === 0) {
+      previewList.hidden = true;
+      return;
+    }
+    splitItems.forEach((split) => {
+      const item = document.createElement("li");
+      item.className = "split-preview-item";
+      if (split.excluded) {
+        item.classList.add("excluded");
+      }
+
+      const labelWrap = document.createElement("span");
+      labelWrap.className = "split-preview-item-label";
+      if (split.category_color) {
+        labelWrap.style.setProperty("--split-color", split.category_color);
+      }
+
+      const labelText = document.createElement("span");
+      labelText.className = "split-preview-item-text";
+      labelText.textContent = split.excluded
+        ? `${split.category_name} (ignoriert)`
+        : split.category_name;
+      labelWrap.appendChild(labelText);
+
+      const amount = document.createElement("span");
+      amount.className = "split-preview-item-amount";
+      amount.textContent = `${Number(split.amount).toLocaleString("de-AT", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} €`;
+
+      item.appendChild(labelWrap);
+      item.appendChild(amount);
+      previewList.appendChild(item);
+    });
+    previewList.hidden = false;
+  }
+
+  function updateSplitStateForRow(row) {
+    const splitItems = getEffectiveSplitItems(row);
+    const isSplit = splitItems.length > 0 || row.classList.contains("tx-row-split-editing");
+    row.classList.toggle("tx-row-split", isSplit);
+
+    const categorySelect = row.querySelector(".tx-category");
+    const splitCategoryNote = row.querySelector(".tx-split-category-note");
+    if (categorySelect) {
+      categorySelect.hidden = isSplit;
+      categorySelect.disabled = isSplit;
+    }
+    if (splitCategoryNote) {
+      if (isSplit) {
+        splitCategoryNote.textContent = `Aufgeteilt in ${splitItems.length} Posten`;
+      } else {
+        splitCategoryNote.textContent = "";
+      }
+      splitCategoryNote.hidden = !isSplit;
+    }
+
+    const splitButton = row.querySelector(".split-manage-btn");
+    if (splitButton) {
+      splitButton.textContent = isSplit ? `${splitItems.length} Posten` : "Aufteilen";
+    }
+
+    renderSplitPreview(row, splitItems);
+    return { splitItems, isSplit };
+  }
+
+  function updateRowVisualState(row) {
+    const { isSplit } = updateSplitStateForRow(row);
+    const isExcluded = Boolean(row.querySelector(".tx-excluded")?.checked);
+    const categorySelect = row.querySelector(".tx-category");
+    const isUncategorized = !isExcluded && !isSplit && categorySelect && (categorySelect.value || "") === "";
+
+    row.classList.toggle("tx-row-excluded", isExcluded);
+    row.classList.toggle("tx-row-uncategorized", Boolean(isUncategorized));
+
+    const splitEditorRow = findSplitEditorRowForTxId(row.dataset.transactionId);
+    if (splitEditorRow) {
+      splitEditorRow.classList.toggle("tx-row-excluded", isExcluded);
+    }
+    ensureAttentionExpansionForRow(row);
   }
 
   function getCategoryOptionsHtml(row) {
@@ -486,8 +676,10 @@
       return "";
     }
     return Array.from(categorySelect.options)
-      .filter((option) => option.value !== "")
-      .map((option) => `<option value="${option.value}">${option.textContent}</option>`)
+      .map(
+        (option) =>
+          `<option value="${option.value}" data-color="${option.dataset.color || ""}">${option.textContent}</option>`
+      )
       .join("");
   }
 
@@ -498,27 +690,57 @@
       <select class="split-category">${categoryOptionsHtml}</select>
       <input class="split-amount" type="number" step="0.01" placeholder="Betrag" />
       <label class="split-exclude-toggle"><input type="checkbox" class="split-excluded" /> Ignorieren</label>
-      <button class="btn-secondary split-remove-line">Entfernen</button>
+      <button type="button" class="btn-secondary split-remove-line">Entfernen</button>
     `;
     if (split) {
-      wrapper.querySelector(".split-category").value = String(split.category_id);
+      if (split.category_id === null || split.category_id === undefined) {
+        wrapper.querySelector(".split-category").value = "";
+      } else {
+        wrapper.querySelector(".split-category").value = String(split.category_id);
+      }
       wrapper.querySelector(".split-amount").value = Number(split.amount).toFixed(2);
       wrapper.querySelector(".split-excluded").checked = Boolean(split.excluded);
     }
     return wrapper;
   }
 
-  function updateSplitBalance(lineContainer, txAmount, balanceEl, saveSplitBtn) {
-    const values = Array.from(lineContainer.querySelectorAll(".split-amount"))
-      .map((input) => Number(input.value))
-      .filter((value) => Number.isFinite(value));
-    const total = Number(values.reduce((sum, value) => sum + value, 0).toFixed(2));
-    const remaining = Number((txAmount - total).toFixed(2));
+  function parseSplitAmount(value) {
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(",", ".");
+    if (!normalized) {
+      return null;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
 
-    balanceEl.textContent = `Verteilt: ${total.toFixed(2)} | Offen: ${remaining.toFixed(2)}`;
-    const valid = Math.abs(remaining) <= 0.01 && values.length > 0;
-    balanceEl.classList.toggle("ok", valid);
-    balanceEl.classList.toggle("error", !valid);
+  function updateSplitBalance(lineContainer, txAmount, balanceEl, saveSplitBtn) {
+    const lines = Array.from(lineContainer.querySelectorAll(".split-line"));
+    const amounts = lines.map((line) => parseSplitAmount(line.querySelector(".split-amount")?.value));
+    const hasInvalidAmount = amounts.some((value) => value === null);
+    const validAmounts = amounts.filter((value) => value !== null);
+    const total = Number(validAmounts.reduce((sum, value) => sum + value, 0).toFixed(2));
+    const remaining = Number((txAmount - total).toFixed(2));
+    const lineCount = lines.length;
+
+    let valid = false;
+    balanceEl.classList.remove("ok", "error", "warning");
+    if (lineCount === 0) {
+      balanceEl.textContent = "Keine Aufteilung aktiv. Speichern entfernt alle Posten.";
+      balanceEl.classList.add("ok");
+      valid = true;
+    } else if (lineCount === 1) {
+      balanceEl.textContent = "Mindestens 2 Posten für eine Aufteilung erforderlich.";
+      balanceEl.classList.add("warning");
+    } else if (hasInvalidAmount) {
+      balanceEl.textContent = "Bitte in jeder Teilzeile einen gültigen Betrag eingeben.";
+      balanceEl.classList.add("warning");
+    } else {
+      balanceEl.textContent = `Verteilt: ${total.toFixed(2)} | Offen: ${remaining.toFixed(2)}`;
+      valid = Math.abs(remaining) <= 0.01;
+      balanceEl.classList.add(valid ? "ok" : "error");
+    }
     saveSplitBtn.disabled = !valid;
   }
 
@@ -531,6 +753,11 @@
     document.querySelectorAll(".split-editor-row").forEach((row) => {
       if (row !== editorRow) {
         row.hidden = true;
+        const oldTxRow = document.querySelector(`tr.tx-row[data-transaction-id="${row.dataset.splitEditorFor}"]`);
+        if (oldTxRow) {
+          oldTxRow.classList.remove("tx-row-split-editing");
+          updateRowVisualState(oldTxRow);
+        }
       }
     });
     editorRow.hidden = false;
@@ -546,54 +773,134 @@
     }
     const txAmount = Number(txRow?.dataset.transactionAmount || 0);
     const categoryOptionsHtml = getCategoryOptionsHtml(txRow);
+    txRow.classList.add("tx-row-split-editing");
+    const categorySelect = txRow.querySelector(".tx-category");
+    if (categorySelect) {
+      const initial = categorySelect.dataset.initial || "";
+      if ((categorySelect.value || "") !== "") {
+        categorySelect.value = "";
+        if (initial === "") {
+          const entry = ensureEntry(String(transactionId));
+          delete entry.category_id;
+          cleanupEntry(String(transactionId));
+        } else {
+          setFieldChange(String(transactionId), "category_id", null);
+        }
+        refreshIndicator();
+        updateRowDirtyState(txRow);
+      }
+    }
+    updateRowVisualState(txRow);
 
     const splitData = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
     lineContainer.innerHTML = "";
-    if (splitData.splits.length === 0) {
-      lineContainer.appendChild(buildSplitLine(categoryOptionsHtml));
+    if (splitData.splits.length <= 1) {
+      let firstSplit = null;
+      let amountA = roundMoney(txAmount / 2);
+      if (splitData.splits.length === 1) {
+        const existing = splitData.splits[0] || {};
+        const existingAmount = Number(existing.amount);
+        amountA = Number.isFinite(existingAmount) ? roundMoney(existingAmount) : amountA;
+        firstSplit = {
+          category_id: existing.category_id ?? null,
+          amount: amountA,
+          excluded: Boolean(existing.excluded),
+        };
+      }
+      const amountB = roundMoney(txAmount - amountA);
+      const first = buildSplitLine(categoryOptionsHtml, firstSplit);
+      const second = buildSplitLine(categoryOptionsHtml, { category_id: null, amount: amountB, excluded: false });
+      first.querySelector(".split-amount").value = amountA.toFixed(2);
+      second.querySelector(".split-amount").value = amountB.toFixed(2);
+      lineContainer.appendChild(first);
+      lineContainer.appendChild(second);
     } else {
       splitData.splits.forEach((split) => {
         lineContainer.appendChild(buildSplitLine(categoryOptionsHtml, split));
       });
     }
 
-    function bindSplitLineEvents() {
-      lineContainer.querySelectorAll(".split-line").forEach((line) => {
-        const amountInput = line.querySelector(".split-amount");
-        const excludedInput = line.querySelector(".split-excluded");
-        const removeBtn = line.querySelector(".split-remove-line");
-        amountInput.oninput = () => updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
-        excludedInput.onchange = () => updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
-        removeBtn.onclick = () => {
-          line.remove();
-          updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
-        };
+    let splitBalanceFrame = null;
+    const scheduleSplitBalanceUpdate = () => {
+      if (splitBalanceFrame !== null) {
+        window.cancelAnimationFrame(splitBalanceFrame);
+      }
+      splitBalanceFrame = window.requestAnimationFrame(() => {
+        splitBalanceFrame = null;
+        updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
       });
-      updateSplitBalance(lineContainer, txAmount, splitBalanceEl, saveSplitBtn);
-    }
+    };
 
-    bindSplitLineEvents();
+    lineContainer.oninput = (event) => {
+      if (event.target && event.target.classList.contains("split-amount")) {
+        scheduleSplitBalanceUpdate();
+      }
+    };
 
-    addBtn.onclick = () => {
+    lineContainer.onchange = (event) => {
+      if (event.target && event.target.classList.contains("split-excluded")) {
+        scheduleSplitBalanceUpdate();
+      }
+    };
+
+    lineContainer.onclick = (event) => {
+      const removeBtn = event.target.closest(".split-remove-line");
+      if (!removeBtn) {
+        return;
+      }
+      const line = removeBtn.closest(".split-line");
+      if (line) {
+        line.remove();
+      }
+      scheduleSplitBalanceUpdate();
+    };
+
+    scheduleSplitBalanceUpdate();
+
+    addBtn.onclick = (event) => {
+      event.preventDefault();
       lineContainer.appendChild(buildSplitLine(categoryOptionsHtml));
-      bindSplitLineEvents();
+      scheduleSplitBalanceUpdate();
     };
 
-    cancelBtn.onclick = () => {
+    cancelBtn.onclick = (event) => {
+      event.preventDefault();
       editorRow.hidden = true;
+      txRow.classList.remove("tx-row-split-editing");
+      updateRowVisualState(txRow);
     };
 
-    saveSplitBtn.onclick = async () => {
-      const splitItems = Array.from(lineContainer.querySelectorAll(".split-line"))
-        .map((line) => ({
-          category_id: Number(line.querySelector(".split-category").value),
-          amount: Number(line.querySelector(".split-amount").value),
-          excluded: line.querySelector(".split-excluded").checked,
-        }))
-        .filter((item) => Number.isFinite(item.category_id) && Number.isFinite(item.amount));
+    saveSplitBtn.onclick = async (event) => {
+      event.preventDefault();
+      const splitLines = Array.from(lineContainer.querySelectorAll(".split-line"));
+      const splitItems = [];
+      for (const line of splitLines) {
+        const rawCategory = line.querySelector(".split-category").value;
+        const categoryId = rawCategory === "" ? null : Number(rawCategory);
+        const amount = parseSplitAmount(line.querySelector(".split-amount").value);
+        const excludedValue = line.querySelector(".split-excluded").checked;
+        if (categoryId !== null && !Number.isFinite(categoryId)) {
+          window.Buchnancials.notify("Bitte eine gültige Kategorie für alle Teilzeilen auswählen.", "error");
+          return;
+        }
+        if (amount === null) {
+          window.Buchnancials.notify("Bitte in jeder Teilzeile einen gültigen Betrag eingeben.", "error");
+          return;
+        }
+        splitItems.push({
+          category_id: categoryId,
+          amount,
+          excluded: excludedValue,
+        });
+      }
+
+      if (splitItems.length === 1) {
+        window.Buchnancials.notify("Eine Aufteilung benötigt mindestens 2 Posten.", "error");
+        return;
+      }
 
       const splitTotal = Number(splitItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
-      if (Math.abs(splitTotal - txAmount) > 0.01) {
+      if (splitItems.length > 1 && Math.abs(splitTotal - txAmount) > 0.01) {
         window.Buchnancials.notify(
           `Die Summe der Aufteilung (${splitTotal.toFixed(2)}) muss dem Transaktionsbetrag (${txAmount.toFixed(2)}) entsprechen.`,
           "error"
@@ -607,8 +914,20 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ splits: splitItems }),
         });
+        const refreshedSplitData = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
+        const nextSplits = Array.isArray(refreshedSplitData.splits) ? refreshedSplitData.splits : [];
+        txRow.dataset.splits = JSON.stringify(nextSplits);
+        txRow._cachedSplitsRaw = null;
+        txRow._cachedSplits = null;
+        const stagedEntry = ensureEntry(String(transactionId));
+        delete stagedEntry.category_id;
+        cleanupEntry(String(transactionId));
+        refreshIndicator();
+        editorRow.hidden = true;
+        txRow.classList.remove("tx-row-split-editing");
+        updateRowVisualState(txRow);
+        refreshHierarchyForRow(txRow);
         window.Buchnancials.notify("Aufteilung gespeichert.", "success");
-        window.location.reload();
       } catch (err) {
         window.Buchnancials.notify(err.message, "error");
       }
@@ -643,7 +962,9 @@
   function setInitialStateFromCurrentDom() {
     document.querySelectorAll("tr.tx-row").forEach((row) => {
       setRowInitialStateFromCurrent(row);
+      updateRowVisualState(row);
     });
+    expandAttentionSectionsFromDom();
   }
 
   document.querySelectorAll("tr.tx-row").forEach((row) => {
@@ -668,21 +989,29 @@
       }
       refreshIndicator();
       updateRowDirtyState(row);
-      refreshSankeyFromDom();
+      updateRowVisualState(row);
+      refreshHierarchyForRow(row);
     });
 
+    let memoUpdateFrame = null;
     memo.addEventListener("input", () => {
-      const initial = memo.dataset.initial || "";
-      const current = memo.value;
-      if (current === initial) {
-        const entry = ensureEntry(id);
-        delete entry.memo;
-        cleanupEntry(id);
-      } else {
-        setFieldChange(id, "memo", current);
+      if (memoUpdateFrame !== null) {
+        window.cancelAnimationFrame(memoUpdateFrame);
       }
-      refreshIndicator();
-      updateRowDirtyState(row);
+      memoUpdateFrame = window.requestAnimationFrame(() => {
+        memoUpdateFrame = null;
+        const initial = memo.dataset.initial || "";
+        const current = memo.value;
+        if (current === initial) {
+          const entry = ensureEntry(id);
+          delete entry.memo;
+          cleanupEntry(id);
+        } else {
+          setFieldChange(id, "memo", current);
+        }
+        refreshIndicator();
+        updateRowDirtyState(row);
+      });
     });
 
     excluded.addEventListener("change", () => {
@@ -697,7 +1026,8 @@
       }
       refreshIndicator();
       updateRowDirtyState(row);
-      refreshSankeyFromDom();
+      updateRowVisualState(row);
+      refreshHierarchyForRow(row);
     });
   });
 
@@ -726,6 +1056,7 @@
       const row = document.querySelector(`tr.tx-row[data-transaction-id="${id}"]`);
       if (row) {
         setRowInitialStateFromCurrent(row);
+        updateRowVisualState(row);
       }
     });
     staged.clear();
@@ -829,14 +1160,36 @@
     });
   });
 
+  let suppressToggleRefresh = false;
   document.querySelectorAll("details").forEach((details) => {
     details.addEventListener("toggle", () => {
-      window.setTimeout(refreshSankeyFromDom, 0);
+      if (suppressToggleRefresh) {
+        return;
+      }
+      if (!details.open) {
+        return;
+      }
+      window.setTimeout(() => {
+        if (details.classList.contains("month-block")) {
+          refreshHierarchyForMonthBlock(details);
+          return;
+        }
+        if (details.classList.contains("quarter-block")) {
+          refreshQuarterBlock(details);
+          refreshYearBlock(details.closest(".year-block"));
+          return;
+        }
+        if (details.classList.contains("year-block")) {
+          refreshYearBlock(details);
+        }
+      }, 0);
     });
   });
 
+  suppressToggleRefresh = true;
   setInitialStateFromCurrentDom();
+  suppressToggleRefresh = false;
   staged.clear();
   refreshIndicator();
-  refreshSankeyFromDom();
+  refreshOpenSankeysFromDom();
 })();
