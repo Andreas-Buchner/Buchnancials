@@ -48,6 +48,46 @@ def _category_name_exists(
     return conn.execute(sql, params).fetchone() is not None
 
 
+def _require_category(conn: sqlite3.Connection, category_id: int) -> sqlite3.Row:
+    category = conn.execute(
+        "SELECT id, name, type FROM categories WHERE id = ?",
+        (category_id,),
+    ).fetchone()
+    if category is None:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    return category
+
+
+def _get_category_usage_stats(conn: sqlite3.Connection, category_id: int) -> dict[str, int]:
+    row = conn.execute(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM transactions WHERE category_id = ?) AS direct_transactions,
+          (SELECT COUNT(*) FROM transaction_splits WHERE category_id = ?) AS split_lines,
+          (
+            SELECT COUNT(*)
+            FROM (
+              SELECT t.id
+              FROM transactions t
+              WHERE t.category_id = ?
+              UNION
+              SELECT ts.transaction_id
+              FROM transaction_splits ts
+              WHERE ts.category_id = ?
+            ) used
+          ) AS affected_transactions,
+          (SELECT COUNT(*) FROM rules WHERE category_id = ?) AS linked_rules
+        """,
+        (category_id, category_id, category_id, category_id, category_id),
+    ).fetchone()
+    return {
+        "direct_transactions": int(row["direct_transactions"]),
+        "split_lines": int(row["split_lines"]),
+        "affected_transactions": int(row["affected_transactions"]),
+        "linked_rules": int(row["linked_rules"]),
+    }
+
+
 @router.get("/categories")
 def get_categories() -> list[dict]:
     with get_connection() as conn:
@@ -159,49 +199,14 @@ def update_category(category_id: int, payload: CategoryPatch) -> dict:
 @router.get("/categories/{category_id}/usage")
 def get_category_usage(category_id: int) -> dict:
     with get_connection() as conn:
-        category = conn.execute(
-            "SELECT id, name, type FROM categories WHERE id = ?",
-            (category_id,),
-        ).fetchone()
-        if category is None:
-            raise HTTPException(status_code=404, detail="Category not found.")
-
-        direct_transactions = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM transactions WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()["cnt"]
-        split_lines = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM transaction_splits WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()["cnt"]
-        affected_transactions = conn.execute(
-            """
-            SELECT COUNT(*) AS cnt
-            FROM (
-              SELECT t.id
-              FROM transactions t
-              WHERE t.category_id = ?
-              UNION
-              SELECT ts.transaction_id
-              FROM transaction_splits ts
-              WHERE ts.category_id = ?
-            ) used
-            """,
-            (category_id, category_id),
-        ).fetchone()["cnt"]
-        linked_rules = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM rules WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()["cnt"]
+        category = _require_category(conn, category_id)
+        usage = _get_category_usage_stats(conn, category_id)
 
     return {
         "category_id": category_id,
         "category_name": category["name"],
         "category_type": category["type"],
-        "direct_transactions": direct_transactions,
-        "split_lines": split_lines,
-        "affected_transactions": affected_transactions,
-        "linked_rules": linked_rules,
+        **usage,
     }
 
 
@@ -209,40 +214,8 @@ def get_category_usage(category_id: int) -> dict:
 def delete_category(category_id: int) -> dict:
     now = utc_now_iso()
     with get_connection() as conn:
-        category = conn.execute(
-            "SELECT id, name, type FROM categories WHERE id = ?",
-            (category_id,),
-        ).fetchone()
-        if category is None:
-            raise HTTPException(status_code=404, detail="Category not found.")
-
-        direct_transactions = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM transactions WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()["cnt"]
-        split_lines = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM transaction_splits WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()["cnt"]
-        affected_transactions = conn.execute(
-            """
-            SELECT COUNT(*) AS cnt
-            FROM (
-              SELECT t.id
-              FROM transactions t
-              WHERE t.category_id = ?
-              UNION
-              SELECT ts.transaction_id
-              FROM transaction_splits ts
-              WHERE ts.category_id = ?
-            ) used
-            """,
-            (category_id, category_id),
-        ).fetchone()["cnt"]
-        linked_rules = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM rules WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()["cnt"]
+        category = _require_category(conn, category_id)
+        usage = _get_category_usage_stats(conn, category_id)
 
         conn.execute(
             "UPDATE transactions SET category_id = NULL, updated_at = ? WHERE category_id = ?",
@@ -266,8 +239,5 @@ def delete_category(category_id: int) -> dict:
         "id": category_id,
         "name": category["name"],
         "type": category["type"],
-        "direct_transactions": direct_transactions,
-        "split_lines": split_lines,
-        "affected_transactions": affected_transactions,
-        "linked_rules": linked_rules,
+        **usage,
     }

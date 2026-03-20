@@ -2,7 +2,14 @@
 
 {% block content %}
 <section class="panel">
-  <h2>CSV-Import</h2>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h2>CSV-Import</h2>
+        <p class="hint-text">CSV-Datei laden, Spalten zuordnen und die Vorschau vor dem Import prüfen.</p>
+      </div>
+    </div>
+  </div>
   <div class="stack">
     <label for="csv-file">CSV-Datei</label>
     <input id="csv-file" type="file" accept=".csv,text/csv" />
@@ -17,7 +24,11 @@
 </section>
 
 <section class="panel" id="preview-section" hidden>
-  <h3>Vorschau & Spaltenzuordnung</h3>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <h3>Vorschau & Spaltenzuordnung</h3>
+    </div>
+  </div>
   <p id="preview-meta"></p>
   <div id="mapping-container" class="mapping-grid"></div>
   <button id="execute-import-btn" class="btn-primary">Import starten</button>
@@ -27,10 +38,16 @@
 </section>
 
 <section class="panel">
-  <h3>Daten-Snapshot</h3>
-  <p class="hint-text">
-    Exportiere die komplette lokale Datenbank als Datei und importiere sie auf einem anderen Rechner wieder.
-  </p>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h3>Daten-Snapshot</h3>
+        <p class="hint-text">
+          Exportiere die komplette lokale Datenbank als Datei und importiere sie auf einem anderen Rechner wieder.
+        </p>
+      </div>
+    </div>
+  </div>
   <div class="stack">
     <a href="/snapshot/export" class="btn-secondary">Snapshot exportieren</a>
   </div>
@@ -54,5 +71,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/import.js"></script>
+<script src="/static/js/import.js?v=20260320-17"></script>
 {% endblock %}

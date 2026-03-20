@@ -2,7 +2,14 @@
 
 {% block content %}
 <section class="panel">
-  <h2>Regeln</h2>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h2>Regeln</h2>
+        <p class="hint-text">Regeln basierend auf Beschreibung, Auftraggeber oder Rohtext anlegen und auf Buchungen anwenden.</p>
+      </div>
+    </div>
+  </div>
   <div class="rule-form-grid rule-form-grid-top">
     <input type="text" id="rule-name" placeholder="Regelname" />
     <select id="rule-amount-sign" aria-label="Gilt für">
@@ -67,29 +74,36 @@
 </section>
 
 <section class="panel">
-  <table class="tx-table" id="rules-table">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Gilt für</th>
-        <th>Feld 1</th>
-        <th>Typ 1</th>
-        <th>Wert 1</th>
-        <th>Verknüpfung</th>
-        <th>Feld 2</th>
-        <th>Typ 2</th>
-        <th>Wert 2</th>
-        <th>Kategorie</th>
-        <th>Buchungen ignorieren</th>
-        <th>Aktiv</th>
-        <th>Aktionen</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <h3>Regelübersicht</h3>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="tx-table" id="rules-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Gilt für</th>
+          <th>Feld 1</th>
+          <th>Typ 1</th>
+          <th>Wert 1</th>
+          <th>Verknüpfung</th>
+          <th>Feld 2</th>
+          <th>Typ 2</th>
+          <th>Wert 2</th>
+          <th>Kategorie</th>
+          <th>Buchungen ignorieren</th>
+          <th>Aktiv</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/rules.js"></script>
+<script src="/static/js/rules.js?v=20260320-17"></script>
 {% endblock %}

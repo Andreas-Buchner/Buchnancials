@@ -2,8 +2,13 @@
 
 {% block content %}
 <section class="panel">
-  <div class="panel-header">
-    <h2>Übersicht</h2>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h2>Übersicht</h2>
+        <p class="hint-text">Jahres-, Quartals- und Monatswerte mit eingebetteten Sankey-Ansichten.</p>
+      </div>
+    </div>
   </div>
   {% if not has_transactions %}
   <div class="empty-state">
@@ -148,5 +153,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/transactions.js?v=20260320-15"></script>
+<script src="/static/js/transactions.js?v=20260320-18"></script>
 {% endblock %}

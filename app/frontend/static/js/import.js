@@ -217,9 +217,11 @@
       return;
     }
 
-    const confirmed = window.confirm(
-      "Beim Snapshot-Import werden alle aktuellen Daten überschrieben. Möchtest du fortfahren?",
-    );
+    const confirmed = await window.Buchnancials.confirmAction({
+      title: "Snapshot importieren?",
+      message: "Beim Snapshot-Import werden alle aktuellen Daten überschrieben. Möchtest du fortfahren?",
+      confirmLabel: "Importieren",
+    });
     if (!confirmed) {
       return;
     }

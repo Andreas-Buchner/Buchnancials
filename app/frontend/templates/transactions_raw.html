@@ -2,21 +2,29 @@
 
 {% block content %}
 <section class="panel">
-  <div class="panel-header">
-    <h2>Transaktionen</h2>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h2>Transaktionen</h2>
+        <p class="hint-text">Rohansicht aller Transaktionen mit Filter- und Sortierfunktionen für schnelle Zuordnung.</p>
+      </div>
+    </div>
   </div>
-  <p class="hint-text">Rohansicht aller Transaktionen mit Filter- und Sortierfunktionen für schnelle Zuordnung.</p>
-  <div class="stack-inline raw-filters">
+  <div class="toolbar raw-filters" role="group" aria-label="Filter für Transaktionen">
+    <label class="visually-hidden" for="raw-filter-search">Suche in Beschreibung, Auftraggeber oder Notiz</label>
     <input type="search" id="raw-filter-search" placeholder="Suche in Beschreibung, Auftraggeber, Notiz..." />
+    <label class="visually-hidden" for="raw-filter-type">Betragsfilter</label>
     <select id="raw-filter-type">
       <option value="all">Alle Beträge</option>
       <option value="income">Nur Einnahmen</option>
       <option value="expense">Nur Ausgaben</option>
     </select>
+    <label class="visually-hidden" for="raw-filter-category">Kategorienfilter</label>
     <select id="raw-filter-category">
       <option value="all">Alle Kategorien</option>
       <option value="none">Ohne Kategorie</option>
     </select>
+    <label class="visually-hidden" for="raw-filter-excluded">Ignorierfilter</label>
     <select id="raw-filter-excluded">
       <option value="all">Alle (inkl. ignoriert)</option>
       <option value="active">Nur aktive</option>
@@ -50,5 +58,5 @@
 {% block scripts %}
 <script id="raw-transactions-data" type="application/json">{{ transactions | tojson }}</script>
 <script id="raw-categories-data" type="application/json">{{ categories | tojson }}</script>
-<script src="/static/js/transactions_raw.js?v=20260320-2"></script>
+<script src="/static/js/transactions_raw.js?v=20260320-17"></script>
 {% endblock %}

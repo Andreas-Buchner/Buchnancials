@@ -9,17 +9,18 @@
     <link rel="apple-touch-icon" href="/static/img/logo.png" />
     <meta property="og:image" content="/static/img/logo.png" />
     <meta name="twitter:image" content="/static/img/logo.png" />
-    <link rel="stylesheet" href="/static/css/styles.css" />
+    <link rel="stylesheet" href="/static/css/styles.css?v=20260320-22" />
     {% block head_extra %}{% endblock %}
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Zum Inhalt springen</a>
     <header class="site-header">
       <div class="header-inner">
         <a href="/" class="brand-link" data-nav-link>
           <img src="/static/img/logo.png" alt="Buchnancials-Logo" class="brand-logo" />
           <h1>Buchnancials</h1>
         </a>
-        <nav>
+        <nav aria-label="Hauptnavigation">
           <a href="/" data-nav-link>Übersicht</a>
           <a href="/transactions/raw" data-nav-link>Transaktionen</a>
           <a href="/planning" data-nav-link>Dashboards</a>
@@ -29,11 +30,11 @@
         </nav>
       </div>
     </header>
-    <main class="page-container">{% block content %}{% endblock %}</main>
+    <main id="main-content" class="page-container" tabindex="-1">{% block content %}{% endblock %}</main>
     {% if plotly_js %}
     <script>{{ plotly_js | safe }}</script>
     {% endif %}
-    <script src="/static/js/common.js"></script>
+    <script src="/static/js/common.js?v=20260320-22"></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

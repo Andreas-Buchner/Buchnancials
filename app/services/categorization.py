@@ -15,6 +15,9 @@ def normalize_match_type(value: str) -> str:
     return value.strip().lower().replace(" ", "_")
 
 
+NORMALIZED_ALLOWED_MATCH_TYPES = {normalize_match_type(match_type) for match_type in ALLOWED_MATCH_TYPES}
+
+
 def load_active_rules(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
@@ -61,7 +64,7 @@ def _match_rule(candidate: str, match_type: str, match_value: str) -> bool:
 
 
 def _is_match_type_allowed(match_type: str | None) -> bool:
-    return normalize_match_type(match_type or "") in {normalize_match_type(x) for x in ALLOWED_MATCH_TYPES}
+    return normalize_match_type(match_type or "") in NORMALIZED_ALLOWED_MATCH_TYPES
 
 
 def _match_condition(transaction: dict[str, Any], match_field: str | None, match_type: str | None, match_value: str | None) -> bool:

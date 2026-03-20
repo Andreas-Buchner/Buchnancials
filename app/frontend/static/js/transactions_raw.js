@@ -42,12 +42,7 @@
   }
 
   function normalizeCategoryLabel(value) {
-    if (!value || !String(value).trim()) {
-      return "Ohne Kategorie";
-    }
-    return String(value)
-      .replace(/\s+\((income|expense|einnahme|einnahmen|ausgabe|ausgaben)(,\s*inactive|,\s*inaktiv)?\)$/i, "")
-      .trim();
+    return window.Buchnancials.normalizeCategoryLabel(value);
   }
 
   function typeLabel(categoryType) {
@@ -55,32 +50,15 @@
   }
 
   function roundMoney(value) {
-    return Number(Number(value).toFixed(2));
+    return window.Buchnancials.roundMoney(value);
   }
 
   function parseSplitAmount(value) {
-    const normalized = String(value ?? "")
-      .trim()
-      .replace(",", ".");
-    if (!normalized) {
-      return null;
-    }
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+    return window.Buchnancials.parseMoneyInput(value);
   }
 
   function normalizeSplitItem(split) {
-    return {
-      id: split?.id,
-      transaction_id: split?.transaction_id,
-      category_id:
-        split?.category_id === null || split?.category_id === undefined ? null : Number(split.category_id),
-      amount: Number(split?.amount || 0),
-      excluded: Boolean(split?.excluded),
-      category_name: normalizeCategoryLabel(split?.category_name || "Ohne Kategorie"),
-      category_type: split?.category_type || null,
-      category_color: split?.category_color || null,
-    };
+    return window.Buchnancials.normalizeSplitItem(split);
   }
 
   function getEffectiveSplitItems(tx) {
@@ -264,68 +242,15 @@
   }
 
   function getCategoryOptionsHtmlFromSelect(select) {
-    if (!select) {
-      return "";
-    }
-    return Array.from(select.options)
-      .map(
-        (option) =>
-          `<option value="${option.value}" data-color="${option.dataset.color || ""}">${option.textContent}</option>`
-      )
-      .join("");
+    return window.Buchnancials.getSelectOptionsHtml(select);
   }
 
   function buildSplitLine(categoryOptionsHtml, split = null) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "split-line";
-    wrapper.innerHTML = `
-      <select class="split-category">${categoryOptionsHtml}</select>
-      <input class="split-amount" type="number" step="0.01" placeholder="Betrag" />
-      <label class="split-exclude-toggle"><input type="checkbox" class="split-excluded" /> Ignorieren</label>
-      <button type="button" class="btn-secondary split-remove-line">Entfernen</button>
-    `;
-
-    if (split) {
-      if (split.category_id === null || split.category_id === undefined) {
-        wrapper.querySelector(".split-category").value = "";
-      } else {
-        wrapper.querySelector(".split-category").value = String(split.category_id);
-      }
-      wrapper.querySelector(".split-amount").value = Number(split.amount).toFixed(2);
-      wrapper.querySelector(".split-excluded").checked = Boolean(split.excluded);
-    }
-
-    return wrapper;
+    return window.Buchnancials.buildSplitLine(categoryOptionsHtml, split);
   }
 
   function updateSplitBalance(lineContainer, txAmount, balanceEl, saveSplitBtn) {
-    const lines = Array.from(lineContainer.querySelectorAll(".split-line"));
-    const amounts = lines.map((line) => parseSplitAmount(line.querySelector(".split-amount")?.value));
-    const hasInvalidAmount = amounts.some((value) => value === null);
-    const validAmounts = amounts.filter((value) => value !== null);
-    const total = Number(validAmounts.reduce((sum, value) => sum + value, 0).toFixed(2));
-    const remaining = Number((txAmount - total).toFixed(2));
-    const lineCount = lines.length;
-
-    let valid = false;
-    balanceEl.classList.remove("ok", "error", "warning");
-    if (lineCount === 0) {
-      balanceEl.textContent = "Keine Aufteilung aktiv. Speichern entfernt alle Posten.";
-      balanceEl.classList.add("ok");
-      valid = true;
-    } else if (lineCount === 1) {
-      balanceEl.textContent = "Mindestens 2 Posten für eine Aufteilung erforderlich.";
-      balanceEl.classList.add("warning");
-    } else if (hasInvalidAmount) {
-      balanceEl.textContent = "Bitte in jeder Teilzeile einen gültigen Betrag eingeben.";
-      balanceEl.classList.add("warning");
-    } else {
-      balanceEl.textContent = `Verteilt: ${total.toFixed(2)} | Offen: ${remaining.toFixed(2)}`;
-      valid = Math.abs(remaining) <= 0.01;
-      balanceEl.classList.add(valid ? "ok" : "error");
-    }
-
-    saveSplitBtn.disabled = !valid;
+    return window.Buchnancials.updateSplitBalance(lineContainer, txAmount, balanceEl, saveSplitBtn);
   }
 
   function findSplitEditorRowForTxId(transactionId) {
@@ -333,47 +258,7 @@
   }
 
   function renderSplitPreview(previewList, splitItems) {
-    if (!previewList) {
-      return;
-    }
-
-    previewList.textContent = "";
-    if (splitItems.length === 0) {
-      previewList.hidden = true;
-      return;
-    }
-
-    splitItems.forEach((split) => {
-      const item = document.createElement("li");
-      item.className = "split-preview-item";
-      if (split.excluded) {
-        item.classList.add("excluded");
-      }
-
-      const labelWrap = document.createElement("span");
-      labelWrap.className = "split-preview-item-label";
-      if (split.category_color) {
-        labelWrap.style.setProperty("--split-color", split.category_color);
-      }
-
-      const labelText = document.createElement("span");
-      labelText.className = "split-preview-item-text";
-      labelText.textContent = split.excluded ? `${split.category_name} (ignoriert)` : split.category_name;
-      labelWrap.appendChild(labelText);
-
-      const amount = document.createElement("span");
-      amount.className = "split-preview-item-amount";
-      amount.textContent = `${Number(split.amount).toLocaleString("de-AT", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} €`;
-
-      item.appendChild(labelWrap);
-      item.appendChild(amount);
-      previewList.appendChild(item);
-    });
-
-    previewList.hidden = false;
+    window.Buchnancials.renderSplitPreview(previewList, splitItems);
   }
 
   function updateRowVisualState(row, tx) {
@@ -423,17 +308,11 @@
   }
 
   async function patchTransaction(transactionId, payload) {
-    return window.Buchnancials.jsonFetch(`/transactions/${transactionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    return window.Buchnancials.patchTransaction(transactionId, payload);
   }
 
   async function fetchTransactionSplits(transactionId) {
-    const response = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
-    const splits = Array.isArray(response.splits) ? response.splits.map((split) => normalizeSplitItem(split)) : [];
-    return { ...response, splits };
+    return window.Buchnancials.fetchTransactionSplits(transactionId);
   }
 
   async function openSplitEditor(tx, txRow) {
@@ -765,7 +644,7 @@
       try {
         await patchTransaction(tx.id, { category_id: nextCategoryId });
         updateRowVisualState(row, tx);
-        renderTable();
+        scheduleRenderTable();
       } catch (err) {
         tx.category_id = previousCategoryId;
         const previousCategory = previousCategoryId === null ? null : categoriesById.get(previousCategoryId) || null;
@@ -793,7 +672,7 @@
       try {
         await patchTransaction(tx.id, { excluded: nextExcluded });
         updateRowVisualState(row, tx);
-        renderTable();
+        scheduleRenderTable();
       } catch (err) {
         tx.excluded = previousExcluded;
         excludedCheckbox.checked = previousExcluded;
@@ -850,6 +729,17 @@
     updateSortButtons();
   }
 
+  let renderFrame = null;
+  function scheduleRenderTable() {
+    if (renderFrame !== null) {
+      window.cancelAnimationFrame(renderFrame);
+    }
+    renderFrame = window.requestAnimationFrame(() => {
+      renderFrame = null;
+      renderTable();
+    });
+  }
+
   function populateCategoryFilterOptions() {
     if (!categoryFilter) {
       return;
@@ -897,28 +787,28 @@
   if (searchInput) {
     searchInput.addEventListener("input", () => {
       state.search = (searchInput.value || "").trim().toLowerCase();
-      renderTable();
+      scheduleRenderTable();
     });
   }
 
   if (typeFilter) {
     typeFilter.addEventListener("change", () => {
       state.type = typeFilter.value || "all";
-      renderTable();
+      scheduleRenderTable();
     });
   }
 
   if (categoryFilter) {
     categoryFilter.addEventListener("change", () => {
       state.category = categoryFilter.value || "all";
-      renderTable();
+      scheduleRenderTable();
     });
   }
 
   if (excludedFilter) {
     excludedFilter.addEventListener("change", () => {
       state.excluded = excludedFilter.value || "all";
-      renderTable();
+      scheduleRenderTable();
     });
   }
 
@@ -934,7 +824,7 @@
         state.sortBy = sortBy;
         state.sortDir = sortBy === "amount" || sortBy === "split_count" ? "desc" : "asc";
       }
-      renderTable();
+      scheduleRenderTable();
     });
   });
 

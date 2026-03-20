@@ -1,44 +1,22 @@
 (function () {
-  const BALANCE_NODE_LABEL = "Bilanzsumme";
-  let sankeyExportCounter = 0;
-
-  function normalizeCategoryLabel(value) {
-    if (!value || !value.trim()) {
-      return "Ohne Kategorie";
-    }
-    return value
-      .replace(/\s+\((income|expense|einnahme|einnahmen|ausgabe|ausgaben)(,\s*inactive|,\s*inaktiv)?\)$/i, "")
-      .trim();
-  }
-
-  function formatEuroCompact(value) {
-    const numeric = Number(value || 0);
-    const absolute = Math.round(Math.abs(numeric));
-    const grouped = String(absolute).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-    const prefix = numeric < 0 ? "-" : "";
-    return `${prefix}${grouped} €`;
-  }
-
-  function formatEuroNode(value) {
-    const absolute = Math.round(Math.abs(Number(value || 0)));
-    const grouped = String(absolute).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-    return `${grouped} €`;
-  }
-
-  function isHexColor(value) {
-    return /^#[0-9a-f]{6}$/i.test((value || "").trim());
-  }
-
-  function hexToRgba(hex, alpha) {
-    const normalized = (hex || "").trim();
-    if (!isHexColor(normalized)) {
-      return null;
-    }
-    const r = Number.parseInt(normalized.slice(1, 3), 16);
-    const g = Number.parseInt(normalized.slice(3, 5), 16);
-    const b = Number.parseInt(normalized.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
+  const BALANCE_NODE_LABEL = window.Buchnancials.sankeyBalanceNodeLabel;
+  const sankeyExport = window.Buchnancials.createPlotExportButtonManager({
+    chartIdPrefix: "overview-sankey",
+    getChartContainer: (el) => el.closest(".sankey-container") || el.parentElement,
+    getFilename: (el) => {
+      const detailsBlock = el.closest("details");
+      const label = detailsBlock?.querySelector(":scope > summary .period-label")?.textContent?.trim() || "uebersicht";
+      const slug = window.Buchnancials.slugifyFilenamePart(label) || "sankey";
+      return `buchnancials-sankey-${slug}.jpg`;
+    },
+    getExportTitle: (el) => {
+      const detailsBlock = el.closest("details");
+      const label = detailsBlock?.querySelector(":scope > summary .period-label")?.textContent?.trim();
+      return label ? `Sankey · ${label}` : "Sankey";
+    },
+    successMessage: "Sankey als JPG exportiert.",
+    errorMessage: "Sankey-Export fehlgeschlagen.",
+  });
 
   function buildSankey(rows) {
     const income = new Map();
@@ -53,8 +31,8 @@
         return;
       }
       const amount = Number(row.amount || 0);
-      const category = normalizeCategoryLabel(row.category_name || "Ohne Kategorie");
-      const categoryColor = isHexColor(row.category_color) ? row.category_color : null;
+      const category = window.Buchnancials.normalizeCategoryLabel(row.category_name || "Ohne Kategorie");
+      const categoryColor = window.Buchnancials.isHexColor(row.category_color) ? row.category_color : null;
       if (amount >= 0) {
         income.set(category, (income.get(category) || 0) + amount);
         if (!incomeColor.has(category) && categoryColor) {
@@ -73,10 +51,16 @@
     const collisions = new Set([...income.keys()].filter((name) => expense.has(name)));
     const incomeNode = (name) => (collisions.has(name) ? `${name} (Einnahme)` : name);
     const expenseNode = (name) => (collisions.has(name) ? `${name} (Ausgabe)` : name);
+    const sortCategoriesAlphabetically = (totals) =>
+      [...totals.keys()].sort((left, right) =>
+        String(left || "").localeCompare(String(right || ""), "de", { sensitivity: "base" })
+      );
 
     const links = [];
-    [...income.keys()]
-      .sort()
+    const incomeCategories = sortCategoriesAlphabetically(income);
+    const expenseCategories = sortCategoriesAlphabetically(expense);
+
+    incomeCategories
       .forEach((category) => {
         const value = Number((income.get(category) || 0).toFixed(2));
         if (value > 0) {
@@ -84,13 +68,12 @@
             source: incomeNode(category),
             target: BALANCE_NODE_LABEL,
             value,
-            color: hexToRgba(incomeColor.get(category), 0.4),
+            color: window.Buchnancials.hexToRgba(incomeColor.get(category), 0.4),
           });
         }
       });
 
-    [...expense.keys()]
-      .sort()
+    expenseCategories
       .forEach((category) => {
         const value = Number((expense.get(category) || 0).toFixed(2));
         if (value > 0) {
@@ -98,7 +81,7 @@
             source: BALANCE_NODE_LABEL,
             target: expenseNode(category),
             value,
-            color: hexToRgba(expenseColor.get(category), 0.4),
+            color: window.Buchnancials.hexToRgba(expenseColor.get(category), 0.4),
           });
         }
       });
@@ -120,13 +103,12 @@
       });
     }
 
-    const incomeNodes = [...income.keys()].sort().map(incomeNode);
-    const expenseNodes = [...expense.keys()].sort().map(expenseNode);
+    const incomeNodes = incomeCategories.map(incomeNode);
+    const expenseNodes = expenseCategories.map(expenseNode);
     let nodes = [...incomeNodes, BALANCE_NODE_LABEL, ...expenseNodes];
     if (net > 0) {
       nodes.push("Überschuss");
-    }
-    if (net < 0) {
+    } else if (net < 0) {
       nodes.push("Fehlbetrag");
     }
 
@@ -148,61 +130,6 @@
     }
 
     return { nodes, links, node_colors: nodeColors };
-  }
-
-  function orderSankeyNodesForDisplay(nodes) {
-    const source = Array.isArray(nodes) ? nodes : [];
-    const bottomLabels = new Set(["Überschuss", "Fehlbetrag"]);
-    const regular = [];
-    const bottom = [];
-    source.forEach((label) => {
-      if (bottomLabels.has(label)) {
-        bottom.push(label);
-      } else {
-        regular.push(label);
-      }
-    });
-    return [...regular, ...bottom];
-  }
-
-  function orderSankeyLinksForDisplay(links, nodeIndex) {
-    const source = Array.isArray(links) ? links.slice() : [];
-    const idx = (label) => (nodeIndex.has(label) ? nodeIndex.get(label) : Number.MAX_SAFE_INTEGER);
-    return source.sort((a, b) => {
-      const aToBalance = a.target === BALANCE_NODE_LABEL;
-      const bToBalance = b.target === BALANCE_NODE_LABEL;
-      if (aToBalance !== bToBalance) {
-        return aToBalance ? -1 : 1;
-      }
-
-      const aFromBalance = a.source === BALANCE_NODE_LABEL;
-      const bFromBalance = b.source === BALANCE_NODE_LABEL;
-      if (aFromBalance !== bFromBalance) {
-        return aFromBalance ? 1 : -1;
-      }
-
-      if (aToBalance && bToBalance) {
-        const bySource = idx(a.source) - idx(b.source);
-        if (bySource !== 0) {
-          return bySource;
-        }
-      } else if (aFromBalance && bFromBalance) {
-        const byTarget = idx(a.target) - idx(b.target);
-        if (byTarget !== 0) {
-          return byTarget;
-        }
-      }
-
-      const bySource = idx(a.source) - idx(b.source);
-      if (bySource !== 0) {
-        return bySource;
-      }
-      const byTarget = idx(a.target) - idx(b.target);
-      if (byTarget !== 0) {
-        return byTarget;
-      }
-      return String(a.target || "").localeCompare(String(b.target || ""), "de");
-    });
   }
 
   function summarizeRows(rows) {
@@ -237,284 +164,24 @@
       (pill) => !pill.classList.contains("income") && !pill.classList.contains("expense")
     );
     if (incomePill) {
-      incomePill.textContent = `Einnahmen ${formatEuroCompact(totals.income)}`;
+      incomePill.textContent = `Einnahmen ${window.Buchnancials.formatSankeyCompactEuro(totals.income)}`;
     }
     if (expensePill) {
-      expensePill.textContent = `Ausgaben ${formatEuroCompact(totals.expenses)}`;
+      expensePill.textContent = `Ausgaben ${window.Buchnancials.formatSankeyCompactEuro(totals.expenses)}`;
     }
     if (saldoPill) {
-      saldoPill.textContent = `Saldo ${formatEuroCompact(totals.saldo)}`;
+      saldoPill.textContent = `Saldo ${window.Buchnancials.formatSankeyCompactEuro(totals.saldo)}`;
     }
-  }
-
-  function slugifyFilenamePart(value) {
-    const normalized = String(value || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
-    return normalized
-      .replace(/[^a-zA-Z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .toLowerCase();
-  }
-
-  function ensureSankeyChartId(el) {
-    if (!el.id) {
-      sankeyExportCounter += 1;
-      el.id = `overview-sankey-${sankeyExportCounter}`;
-    }
-    return el.id;
-  }
-
-  function getSankeyExportFilename(el) {
-    const detailsBlock = el.closest("details");
-    const label =
-      detailsBlock?.querySelector(":scope > summary .period-label")?.textContent?.trim() || "uebersicht";
-    const slug = slugifyFilenamePart(label) || "sankey";
-    return `buchnancials-sankey-${slug}.jpg`;
-  }
-
-  function getSankeyExportTitle(el) {
-    const detailsBlock = el.closest("details");
-    const label = detailsBlock?.querySelector(":scope > summary .period-label")?.textContent?.trim();
-    return label ? `Sankey · ${label}` : "Sankey";
-  }
-
-  function findSankeyChartContainer(el) {
-    return el.closest(".sankey-container") || el.parentElement;
-  }
-
-  function findSankeyExportHost(el) {
-    const chartContainer = findSankeyChartContainer(el);
-    if (!chartContainer) {
-      return null;
-    }
-    const hostParent = chartContainer.parentElement || chartContainer;
-    return { chartContainer, hostParent };
-  }
-
-  async function exportSankeyAsJpg(chartEl, filename) {
-    const width = Math.max(Math.round(chartEl.clientWidth || 900), 640);
-    const height = Math.max(Math.round(chartEl.clientHeight || 300), 280);
-    const priorPaperBg = chartEl.layout?.paper_bgcolor ?? "rgba(0,0,0,0)";
-    const priorPlotBg = chartEl.layout?.plot_bgcolor ?? "rgba(0,0,0,0)";
-    const priorTitle = chartEl.layout?.title ?? { text: "" };
-    const priorMarginTop = Number(chartEl.layout?.margin?.t ?? 10);
-    const exportTitle = chartEl.dataset.exportTitle || "Sankey";
-    try {
-      await window.Plotly.relayout(chartEl, {
-        paper_bgcolor: "#ffffff",
-        plot_bgcolor: "#ffffff",
-        title: {
-          text: exportTitle,
-          x: 0.02,
-          xanchor: "left",
-          y: 0.98,
-          yanchor: "top",
-          font: { size: 15, color: "#1f2933" },
-        },
-        "margin.t": Math.max(priorMarginTop, 58),
-      });
-      const imageDataUrl = await window.Plotly.toImage(chartEl, {
-        format: "jpeg",
-        width,
-        height,
-        scale: 2,
-      });
-      const downloadLink = document.createElement("a");
-      downloadLink.href = imageDataUrl;
-      downloadLink.download = filename;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      downloadLink.remove();
-    } finally {
-      try {
-        await window.Plotly.relayout(chartEl, {
-          paper_bgcolor: priorPaperBg,
-          plot_bgcolor: priorPlotBg,
-          title: priorTitle,
-          "margin.t": priorMarginTop,
-        });
-      } catch (err) {
-        // Keep export success path unaffected if background reset fails.
-      }
-    }
-  }
-
-  function setSankeyExportButtonVisibility(el, visible) {
-    const chartId = ensureSankeyChartId(el);
-    const host = findSankeyExportHost(el);
-    if (!host) {
-      return;
-    }
-    const button = host.hostParent.querySelector(`.sankey-export-btn[data-target-chart-id="${chartId}"]`);
-    if (button) {
-      button.hidden = !visible;
-    }
-  }
-
-  function ensureSankeyExportButton(el) {
-    const host = findSankeyExportHost(el);
-    if (!host) {
-      return;
-    }
-    const chartId = ensureSankeyChartId(el);
-    let row = host.hostParent.querySelector(`.plot-export-row[data-target-chart-id="${chartId}"]`);
-    let button = row ? row.querySelector(".sankey-export-btn") : null;
-    if (!row) {
-      row = document.createElement("div");
-      row.className = "plot-export-row";
-      row.dataset.targetChartId = chartId;
-      const nextSibling = host.chartContainer.nextSibling;
-      if (nextSibling) {
-        host.chartContainer.parentElement.insertBefore(row, nextSibling);
-      } else {
-        host.chartContainer.parentElement.appendChild(row);
-      }
-    }
-    if (!button) {
-      button = document.createElement("button");
-      button.type = "button";
-      button.className = "btn-secondary sankey-export-btn";
-      button.textContent = "JPG exportieren";
-      button.addEventListener("click", async (event) => {
-        event.preventDefault();
-        const targetId = button.dataset.targetChartId;
-        const target = targetId ? document.getElementById(targetId) : null;
-        if (!target || !window.Plotly) {
-          return;
-        }
-        button.disabled = true;
-        try {
-          await exportSankeyAsJpg(target, button.dataset.filename || "buchnancials-sankey.jpg");
-          window.Buchnancials.notify("Sankey als JPG exportiert.", "success");
-        } catch (err) {
-          window.Buchnancials.notify("Sankey-Export fehlgeschlagen.", "error");
-        } finally {
-          button.disabled = false;
-        }
-      });
-      row.appendChild(button);
-    }
-    button.dataset.targetChartId = chartId;
-    button.dataset.filename = getSankeyExportFilename(el);
-    el.dataset.exportTitle = getSankeyExportTitle(el);
-    button.hidden = false;
   }
 
   function renderSankey(el, sankey) {
-    if (!window.Plotly) {
-      return;
-    }
-    if (!Array.isArray(sankey.nodes) || sankey.nodes.length === 0) {
-      el.innerHTML = "<small>Für diesen Zeitraum liegen keine Daten vor.</small>";
-      setSankeyExportButtonVisibility(el, false);
-      return;
-    }
-
-    const orderedNodes = orderSankeyNodesForDisplay(sankey.nodes);
-    const index = new Map();
-    orderedNodes.forEach((label, i) => index.set(label, i));
-    const orderedLinks = orderSankeyLinksForDisplay(sankey.links, index);
-    const source = [];
-    const target = [];
-    const value = [];
-    const color = [];
-    const customdata = [];
-
-    const incomeNodes = new Set();
-    const expenseNodes = new Set();
-    orderedLinks.forEach((link) => {
-      if (link.target === BALANCE_NODE_LABEL) {
-        incomeNodes.add(link.source);
-      } else if (link.source === BALANCE_NODE_LABEL) {
-        expenseNodes.add(link.target);
-      }
+    window.Buchnancials.renderSankeyChart(el, sankey, {
+      exporter: sankeyExport,
+      emptyMessage: "Für diesen Zeitraum liegen keine Daten vor.",
+      filenameBase: "uebersicht",
+      exportTitle: "Sankey",
+      isEmpty: (normalized) => !Array.isArray(normalized.nodes) || normalized.nodes.length === 0,
     });
-
-    const inbound = new Map();
-    const outbound = new Map();
-    orderedLinks.forEach((link) => {
-      outbound.set(link.source, (outbound.get(link.source) || 0) + Number(link.value || 0));
-      inbound.set(link.target, (inbound.get(link.target) || 0) + Number(link.value || 0));
-    });
-    const displayLabels = orderedNodes.map((label) => {
-      const total = Math.max(inbound.get(label) || 0, outbound.get(label) || 0);
-      if (total <= 0) {
-        return label;
-      }
-      return `${label} · ${formatEuroNode(total)}`;
-    });
-    const providedNodeColors = sankey.node_colors || {};
-    const nodeColors = orderedNodes.map((label) => {
-      if (providedNodeColors[label]) {
-        return providedNodeColors[label];
-      }
-      if (label === BALANCE_NODE_LABEL) {
-        return "#121212";
-      }
-      if (label === "Überschuss") {
-        return "#5d7d68";
-      }
-      if (label === "Fehlbetrag") {
-        return "#9b6666";
-      }
-      if (incomeNodes.has(label)) {
-        return "#739c8f";
-      }
-      if (expenseNodes.has(label)) {
-        return "#b98c87";
-      }
-      return "#8a9ba8";
-    });
-
-    orderedLinks.forEach((link) => {
-      source.push(index.get(link.source));
-      target.push(index.get(link.target));
-      value.push(link.value);
-      customdata.push(formatEuroCompact(link.value));
-      if (link.color) {
-        color.push(link.color);
-      } else if (link.target === BALANCE_NODE_LABEL) {
-        color.push("rgba(103, 142, 132, 0.35)");
-      } else if (link.source === BALANCE_NODE_LABEL) {
-        color.push("rgba(178, 129, 125, 0.35)");
-      } else {
-        color.push("rgba(109, 123, 133, 0.35)");
-      }
-    });
-
-    window.Plotly.react(
-      el,
-      [
-        {
-          type: "sankey",
-          arrangement: "snap",
-          textfont: { size: 11, color: "#26333a" },
-          node: {
-            label: displayLabels,
-            color: nodeColors,
-            pad: 12,
-            thickness: 20,
-            line: { color: "rgba(45,45,45,0.3)", width: 0.5 },
-          },
-          link: {
-            source,
-            target,
-            value,
-            color,
-            customdata,
-            hovertemplate: "%{source.label} → %{target.label}<br>%{customdata}<extra></extra>",
-          },
-        },
-      ],
-      {
-        margin: { l: 18, r: 18, t: 10, b: 10 },
-        paper_bgcolor: "rgba(0,0,0,0)",
-        font: { size: 12 },
-      },
-      { displayModeBar: false, responsive: true }
-    );
-    ensureSankeyExportButton(el);
   }
 
   function parseRowAmount(row) {
@@ -538,16 +205,7 @@
         return [];
       }
       const parsed = splits
-        .map((split) => ({
-          category_id:
-            split.category_id === null || split.category_id === undefined
-              ? null
-              : Number(split.category_id),
-          amount: Number(split.amount),
-          excluded: Boolean(split.excluded),
-          category_name: normalizeCategoryLabel(split.category_name || "Ohne Kategorie"),
-          category_color: split.category_color || null,
-        }))
+        .map((split) => window.Buchnancials.normalizeSplitItem(split))
         .filter((split) => Number.isFinite(split.amount));
       row._cachedSplitsRaw = raw;
       row._cachedSplits = parsed;
@@ -565,7 +223,7 @@
   }
 
   function roundMoney(value) {
-    return Number(Number(value).toFixed(2));
+    return window.Buchnancials.roundMoney(value);
   }
 
   function collectMonthRows(monthBlock) {
@@ -590,7 +248,7 @@
       rows.push({
         amount: parseRowAmount(row),
         excluded,
-        category_name: normalizeCategoryLabel(selectedOption ? selectedOption.textContent : "Ohne Kategorie"),
+        category_name: window.Buchnancials.normalizeCategoryLabel(selectedOption ? selectedOption.textContent : "Ohne Kategorie"),
         category_color: selectedOption ? selectedOption.dataset.color || null : null,
       });
     });
@@ -784,11 +442,7 @@
   }
 
   async function patchTransaction(transactionId, payload) {
-    return window.Buchnancials.jsonFetch(`/transactions/${transactionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    return window.Buchnancials.patchTransaction(transactionId, payload);
   }
 
   function findSplitEditorRowForTxId(transactionId) {
@@ -796,47 +450,7 @@
   }
 
   function renderSplitPreview(row, splitItems) {
-    const previewList = row.querySelector(".split-preview-list");
-    if (!previewList) {
-      return;
-    }
-    previewList.textContent = "";
-    if (splitItems.length === 0) {
-      previewList.hidden = true;
-      return;
-    }
-    splitItems.forEach((split) => {
-      const item = document.createElement("li");
-      item.className = "split-preview-item";
-      if (split.excluded) {
-        item.classList.add("excluded");
-      }
-
-      const labelWrap = document.createElement("span");
-      labelWrap.className = "split-preview-item-label";
-      if (split.category_color) {
-        labelWrap.style.setProperty("--split-color", split.category_color);
-      }
-
-      const labelText = document.createElement("span");
-      labelText.className = "split-preview-item-text";
-      labelText.textContent = split.excluded
-        ? `${split.category_name} (ignoriert)`
-        : split.category_name;
-      labelWrap.appendChild(labelText);
-
-      const amount = document.createElement("span");
-      amount.className = "split-preview-item-amount";
-      amount.textContent = `${Number(split.amount).toLocaleString("de-AT", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} €`;
-
-      item.appendChild(labelWrap);
-      item.appendChild(amount);
-      previewList.appendChild(item);
-    });
-    previewList.hidden = false;
+    window.Buchnancials.renderSplitPreview(row.querySelector(".split-preview-list"), splitItems);
   }
 
   function updateSplitStateForRow(row) {
@@ -889,77 +503,19 @@
   }
 
   function getCategoryOptionsHtml(row) {
-    const categorySelect = row.querySelector(".tx-category");
-    if (!categorySelect) {
-      return "";
-    }
-    return Array.from(categorySelect.options)
-      .map(
-        (option) =>
-          `<option value="${option.value}" data-color="${option.dataset.color || ""}">${option.textContent}</option>`
-      )
-      .join("");
+    return window.Buchnancials.getSelectOptionsHtml(row.querySelector(".tx-category"));
   }
 
   function buildSplitLine(categoryOptionsHtml, split = null) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "split-line";
-    wrapper.innerHTML = `
-      <select class="split-category">${categoryOptionsHtml}</select>
-      <input class="split-amount" type="number" step="0.01" placeholder="Betrag" />
-      <label class="split-exclude-toggle"><input type="checkbox" class="split-excluded" /> Ignorieren</label>
-      <button type="button" class="btn-secondary split-remove-line">Entfernen</button>
-    `;
-    if (split) {
-      if (split.category_id === null || split.category_id === undefined) {
-        wrapper.querySelector(".split-category").value = "";
-      } else {
-        wrapper.querySelector(".split-category").value = String(split.category_id);
-      }
-      wrapper.querySelector(".split-amount").value = Number(split.amount).toFixed(2);
-      wrapper.querySelector(".split-excluded").checked = Boolean(split.excluded);
-    }
-    return wrapper;
+    return window.Buchnancials.buildSplitLine(categoryOptionsHtml, split);
   }
 
   function parseSplitAmount(value) {
-    const normalized = String(value ?? "")
-      .trim()
-      .replace(",", ".");
-    if (!normalized) {
-      return null;
-    }
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+    return window.Buchnancials.parseMoneyInput(value);
   }
 
   function updateSplitBalance(lineContainer, txAmount, balanceEl, saveSplitBtn) {
-    const lines = Array.from(lineContainer.querySelectorAll(".split-line"));
-    const amounts = lines.map((line) => parseSplitAmount(line.querySelector(".split-amount")?.value));
-    const hasInvalidAmount = amounts.some((value) => value === null);
-    const validAmounts = amounts.filter((value) => value !== null);
-    const total = Number(validAmounts.reduce((sum, value) => sum + value, 0).toFixed(2));
-    const remaining = Number((txAmount - total).toFixed(2));
-    const lineCount = lines.length;
-
-    let valid = false;
-    balanceEl.classList.remove("ok", "error", "warning");
-    if (lineCount === 0) {
-      balanceEl.textContent = "Keine Aufteilung aktiv. Speichern entfernt alle Posten.";
-      balanceEl.classList.add("ok");
-      valid = true;
-    } else if (lineCount === 1) {
-      balanceEl.textContent = "Mindestens 2 Posten für eine Aufteilung erforderlich.";
-      balanceEl.classList.add("warning");
-    } else if (hasInvalidAmount) {
-      balanceEl.textContent = "Bitte in jeder Teilzeile einen gültigen Betrag eingeben.";
-      balanceEl.classList.add("warning");
-    } else {
-      balanceEl.textContent = `Verteilt: ${total.toFixed(2)} | Offen: ${remaining.toFixed(2)}`;
-      valid = Math.abs(remaining) <= 0.01;
-      balanceEl.classList.add(valid ? "ok" : "error");
-    }
-    saveSplitBtn.disabled = !valid;
+    return window.Buchnancials.updateSplitBalance(lineContainer, txAmount, balanceEl, saveSplitBtn);
   }
 
   async function openSplitEditor(transactionId) {
@@ -997,7 +553,7 @@
 
     let splitData;
     try {
-      splitData = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
+      splitData = await window.Buchnancials.fetchTransactionSplits(transactionId);
     } catch (err) {
       editorRow.hidden = true;
       txRow.classList.remove("tx-row-split-editing");
@@ -1127,7 +683,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ splits: splitItems }),
         });
-        const refreshedSplitData = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
+        const refreshedSplitData = await window.Buchnancials.fetchTransactionSplits(transactionId);
         const nextSplits = Array.isArray(refreshedSplitData.splits) ? refreshedSplitData.splits : [];
         txRow.dataset.splits = JSON.stringify(nextSplits);
         txRow._cachedSplitsRaw = null;

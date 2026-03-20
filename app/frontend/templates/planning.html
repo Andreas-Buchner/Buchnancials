@@ -1,23 +1,25 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="panel planning-panel">
-  <div class="panel-header">
-    <h2>Dashboards</h2>
-    <div class="planning-controls">
-      <label for="planning-top-n">Top-Kategorien</label>
-      <select id="planning-top-n">
-        <option value="6">6</option>
-        <option value="8" selected>8</option>
-        <option value="10">10</option>
-        <option value="12">12</option>
-      </select>
-      <button id="planning-refresh" class="btn-secondary">Aktualisieren</button>
+<section class="panel">
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h2>Dashboards</h2>
+        <p class="hint-text">Fokus auf wiederkehrende Ausgabenmuster und Monatsvolatilität für bessere Budgetplanung.</p>
+      </div>
+      <div class="page-intro-actions planning-controls">
+        <label for="planning-top-n">Top-Kategorien</label>
+        <select id="planning-top-n">
+          <option value="6">6</option>
+          <option value="8" selected>8</option>
+          <option value="10">10</option>
+          <option value="12">12</option>
+        </select>
+        <button id="planning-refresh" class="btn-secondary">Aktualisieren</button>
+      </div>
     </div>
   </div>
-  <p class="hint-text">
-    Fokus auf wiederkehrende Ausgabenmuster und Monatsvolatilität, um Budgetziele besser planen zu können.
-  </p>
 </section>
 
 <section class="panel">
@@ -60,5 +62,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/planning.js?v=20260320-15"></script>
+<script src="/static/js/planning.js?v=20260320-16"></script>
 {% endblock %}

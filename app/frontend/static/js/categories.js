@@ -73,69 +73,7 @@
   }
 
   function askDecision({ title, message, actions }) {
-    if (!document.body) {
-      const fallback = window.confirm(message);
-      return Promise.resolve(fallback ? actions[actions.length - 1].value : actions[0].value);
-    }
-
-    return new Promise((resolve) => {
-      const backdrop = document.createElement("div");
-      backdrop.className = "decision-backdrop";
-
-      const modal = document.createElement("div");
-      modal.className = "decision-modal";
-
-      const heading = document.createElement("h3");
-      heading.textContent = title;
-      modal.appendChild(heading);
-
-      const messageEl = document.createElement("p");
-      message.split("\n").forEach((line, index) => {
-        if (index > 0) {
-          messageEl.appendChild(document.createElement("br"));
-        }
-        messageEl.appendChild(document.createTextNode(line));
-      });
-      modal.appendChild(messageEl);
-
-      const actionsWrap = document.createElement("div");
-      actionsWrap.className = "decision-actions";
-      actions.forEach((action) => {
-        const button = document.createElement("button");
-        button.className = action.variant === "primary" ? "btn-primary" : "btn-secondary";
-        button.textContent = action.label;
-        button.addEventListener("click", () => {
-          teardown();
-          resolve(action.value);
-        });
-        actionsWrap.appendChild(button);
-      });
-      modal.appendChild(actionsWrap);
-
-      function teardown() {
-        document.removeEventListener("keydown", onKeydown);
-        backdrop.remove();
-      }
-
-      function onKeydown(event) {
-        if (event.key === "Escape") {
-          teardown();
-          resolve(actions[0].value);
-        }
-      }
-
-      backdrop.addEventListener("click", (event) => {
-        if (event.target !== backdrop) {
-          return;
-        }
-        teardown();
-        resolve(actions[0].value);
-      });
-
-      backdrop.appendChild(modal);
-      document.body.appendChild(backdrop);
-      document.addEventListener("keydown", onKeydown);
-    });
+    return window.Buchnancials.askDecision({ title, message, actions });
   }
 
   function renderCategoryRow(category, fallbackColor) {

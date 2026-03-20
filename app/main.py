@@ -31,6 +31,11 @@ def format_eur_compact(value: float | int | None) -> str:
 
 templates.env.filters["eur"] = format_eur_compact
 
+
+def _bucket_metrics(rows: list[dict]) -> dict[str, object]:
+    return {"summary": summarize(rows), "sankey": build_sankey(rows)}
+
+
 app.include_router(import_router)
 app.include_router(transactions_router)
 app.include_router(categories_router)
@@ -82,14 +87,11 @@ def index(request: Request):
                     and quarter_bucket["quarter"] == current_quarter
                     and month_bucket["month"] == current_month
                 )
-                month_bucket["summary"] = summarize(month_rows)
-                month_bucket["sankey"] = build_sankey(month_rows)
+                month_bucket.update(_bucket_metrics(month_rows))
                 quarter_rows.extend(month_rows)
-            quarter_bucket["summary"] = summarize(quarter_rows)
-            quarter_bucket["sankey"] = build_sankey(quarter_rows)
+            quarter_bucket.update(_bucket_metrics(quarter_rows))
             year_rows.extend(quarter_rows)
-        year_bucket["summary"] = summarize(year_rows)
-        year_bucket["sankey"] = build_sankey(year_rows)
+        year_bucket.update(_bucket_metrics(year_rows))
 
     return templates.TemplateResponse(
         "index.html",

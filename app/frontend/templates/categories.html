@@ -2,20 +2,31 @@
 
 {% block content %}
 <section class="panel">
-  <h2>Kategorien</h2>
+  <div class="page-intro">
+    <div class="page-intro-header">
+      <div>
+        <h2>Kategorien</h2>
+        <p class="hint-text">Ausgabe- und Einnahmekategorien zentral pflegen, inklusive Farbe für die visuelle Zuordnung.</p>
+      </div>
+    </div>
+  </div>
   <div class="category-columns">
-    <div>
+    <div class="section-card">
       <h3>Ausgabenkategorien</h3>
       <div class="stack-inline">
+        <label class="visually-hidden" for="new-expense-category-name">Neue Ausgabenkategorie</label>
         <input type="text" id="new-expense-category-name" placeholder="Neue Ausgabenkategorie" />
+        <label class="visually-hidden" for="new-expense-category-color">Farbe für neue Ausgabenkategorie</label>
         <input type="color" id="new-expense-category-color" value="#7f0000" />
         <button id="create-expense-category-btn" class="btn-primary">Kategorie anlegen</button>
       </div>
     </div>
-    <div>
+    <div class="section-card">
       <h3>Einnahmekategorien</h3>
       <div class="stack-inline">
+        <label class="visually-hidden" for="new-income-category-name">Neue Einnahmekategorie</label>
         <input type="text" id="new-income-category-name" placeholder="Neue Einnahmekategorie" />
+        <label class="visually-hidden" for="new-income-category-color">Farbe für neue Einnahmekategorie</label>
         <input type="color" id="new-income-category-color" value="#0b6e4f" />
         <button id="create-income-category-btn" class="btn-primary">Kategorie anlegen</button>
       </div>
@@ -25,36 +36,40 @@
 
 <section class="panel">
   <div class="category-columns">
-    <div>
+    <div class="section-card">
       <h3>Ausgaben</h3>
-      <table class="tx-table" id="expense-categories-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Farbe</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="tx-table" id="expense-categories-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Farbe</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
-    <div>
+    <div class="section-card">
       <h3>Einnahmen</h3>
-      <table class="tx-table" id="income-categories-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Farbe</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="tx-table" id="income-categories-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Farbe</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/categories.js?v=20260320-5"></script>
+<script src="/static/js/categories.js?v=20260320-17"></script>
 {% endblock %}

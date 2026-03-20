@@ -14,6 +14,7 @@ from app.services.categorization import (
 )
 
 router = APIRouter(tags=["rules"])
+NORMALIZED_MATCH_TYPES = {normalize_match_type(match_type) for match_type in ALLOWED_MATCH_TYPES}
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
@@ -38,7 +39,7 @@ def _validate_rule_payload(
         raise HTTPException(status_code=400, detail="match_value must not be empty.")
     if match_field not in ALLOWED_FIELDS:
         raise HTTPException(status_code=400, detail=f"Invalid match_field: {match_field}")
-    if normalize_match_type(match_type) not in {normalize_match_type(t) for t in ALLOWED_MATCH_TYPES}:
+    if normalize_match_type(match_type) not in NORMALIZED_MATCH_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid match_type: {match_type}")
     normalized_amount_sign = (amount_sign or "any").strip().lower()
     if normalized_amount_sign not in ALLOWED_AMOUNT_SIGNS:
@@ -58,12 +59,34 @@ def _validate_rule_payload(
             raise HTTPException(status_code=400, detail="second_match_value is required when a second condition is used.")
         if second_match_field not in ALLOWED_FIELDS:
             raise HTTPException(status_code=400, detail=f"Invalid second_match_field: {second_match_field}")
-        if normalize_match_type(second_match_type) not in {normalize_match_type(t) for t in ALLOWED_MATCH_TYPES}:
+        if normalize_match_type(second_match_type) not in NORMALIZED_MATCH_TYPES:
             raise HTTPException(status_code=400, detail=f"Invalid second_match_type: {second_match_type}")
 
     normalized_operator = (condition_operator or "and").strip().lower()
     if normalized_operator not in ALLOWED_CONDITION_OPERATORS:
         raise HTTPException(status_code=400, detail=f"Invalid condition_operator: {condition_operator}")
+
+
+def _fetch_rule_validation_fields(conn: sqlite3.Connection, rule_id: int) -> dict:
+    row = conn.execute(
+        """
+        SELECT
+          match_field,
+          match_type,
+          match_value,
+          second_match_field,
+          second_match_type,
+          second_match_value,
+          condition_operator,
+          amount_sign
+        FROM rules
+        WHERE id = ?
+        """,
+        (rule_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Rule not found.")
+    return dict(row)
 
 
 @router.get("/rules")
@@ -166,48 +189,8 @@ def update_rule(rule_id: int, payload: RulePatch) -> dict:
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided for update.")
 
-    if "match_field" in updates or "match_type" in updates or "amount_sign" in updates:
-        with get_connection() as conn:
-            existing = conn.execute(
-                """
-                SELECT
-                  match_field,
-                  match_type,
-                  match_value,
-                  second_match_field,
-                  second_match_type,
-                  second_match_value,
-                  condition_operator,
-                  amount_sign
-                FROM rules
-                WHERE id = ?
-                """,
-                (rule_id,),
-            ).fetchone()
-        if existing is None:
-            raise HTTPException(status_code=404, detail="Rule not found.")
-        existing_values = dict(existing)
-    else:
-        with get_connection() as conn:
-            existing = conn.execute(
-                """
-                SELECT
-                  match_field,
-                  match_type,
-                  match_value,
-                  second_match_field,
-                  second_match_type,
-                  second_match_value,
-                  condition_operator,
-                  amount_sign
-                FROM rules
-                WHERE id = ?
-                """,
-                (rule_id,),
-            ).fetchone()
-        if existing is None:
-            raise HTTPException(status_code=404, detail="Rule not found.")
-        existing_values = dict(existing)
+    with get_connection() as conn:
+        existing_values = _fetch_rule_validation_fields(conn, rule_id)
 
     _validate_rule_payload(
         updates.get("match_field", existing_values["match_field"]),

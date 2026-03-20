@@ -1,34 +1,37 @@
 # Buchnancials
 
-Local-first personal cash-flow tracking with CSV import, rules, and Sankey-based reporting.
+Buchnancials is my local-first cash flow tracker.
 
-Buchnancials is built for people who want complete control over their financial data without cloud sync.
+I built it for myself because I wanted a simple way to import bank CSVs, clean up transactions, apply categorization rules, and get useful monthly, quarterly, and yearly views without putting financial data into a cloud service.
 
-## Highlights
+The UI is mostly in German because this is a personal project first.
 
-- CSV import with preview and flexible column mapping
-- Duplicate detection during import
-- Manual categorization and notes
-- Split transactions into multiple categories
-- Exclude full transactions or individual split lines from reporting
-- Rules engine with:
-  - primary + optional secondary condition
-  - `UND` / `ODER` condition linking
-  - income/expense scope filter (`Erträge` / `Aufwände`)
-  - optional auto-ignore behavior
-- Year / quarter / month rollups with interactive Sankey diagrams
-- Category color support, reused in Sankey rendering
-- Local snapshot export/import for moving data across machines
+## What It Does
 
-## Tech stack
+- imports CSV exports from my bank
+- lets me map columns before import
+- detects duplicates during import
+- stores transactions locally in SQLite
+- supports manual categorization, notes, and split transactions
+- supports ignore flags for full transactions or individual split lines
+- applies rule-based categorization
+- shows rollups on year / quarter / month level
+- includes dashboard views and Sankey diagrams for cash flow analysis
+- supports local snapshot export/import
 
-- FastAPI
-- Jinja2 templates
-- Vanilla JS
-- Plotly Sankey
-- SQLite
+## Screenshots
 
-## Quick start
+These screenshots are from my local setup and are mainly here to show the UI and general workflow.
+
+### Overview
+
+![Overview screenshot](docs/screenshots/overview-ui.png)
+
+### 2025 Average Month Sankey
+
+![2025 average month Sankey](docs/screenshots/sankey-2025-average.png)
+
+## Quick Start
 
 1. Install dependencies:
 
@@ -36,45 +39,56 @@ Buchnancials is built for people who want complete control over their financial 
 uv sync
 ```
 
-2. Run the app:
+2. Start the app:
 
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
-3. Open:
+3. Open it in the browser:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-## Typical workflow
+## How I Use It
 
-1. Go to **Import** and upload a CSV.
-2. Confirm/adjust the suggested column mapping.
-3. Import transactions.
-4. Review/categorize in **Transaktionen**.
-5. Create or tune rules in **Regeln**.
-6. Maintain categories and colors in **Kategorien**.
-7. Use **Snapshot export/import** for local backups or machine migration.
+1. Go to **Import** and upload a CSV export.
+2. Check the suggested column mapping.
+3. Import the transactions.
+4. Review duplicates and imported rows.
+5. Categorize transactions manually where needed.
+6. Create or adjust rules in **Regeln** so the next import needs less manual work.
+7. Use **Übersicht** and **Dashboards** for rollups and trends.
+8. Use snapshot export/import for local backups or moving the data to another machine.
 
-## Data storage
+## Data And Privacy
 
-All data is local and stored in `data/`:
+Everything is stored locally.
 
-- `data/app.db` - main SQLite database
-- `data/imports/` - imported CSV copies
-- `data/backups/` - automatic backups (e.g. before snapshot import)
+- `data/app.db` contains the main SQLite database
+- `data/imports/` stores imported CSV copies
+- `data/backups/` stores automatic backups, for example before snapshot import
+
+There is no cloud sync in this project.
+
+## Stack
+
+- FastAPI
+- Jinja2 templates
+- Vanilla JavaScript
+- Plotly
+- SQLite
 
 ## Development
 
-Run tests:
+Run the test suite:
 
 ```bash
 uv run pytest
 ```
 
-Type-check/compile sanity:
+Run a quick compile sanity check:
 
 ```bash
 uv run python -m compileall app tests

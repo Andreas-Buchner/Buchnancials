@@ -177,7 +177,12 @@
       });
 
       row.querySelector(".rule-delete").addEventListener("click", async () => {
-        if (!window.confirm("Soll diese Regel wirklich gelöscht werden?")) {
+        const confirmed = await window.Buchnancials.confirmAction({
+          title: "Regel löschen?",
+          message: "Soll diese Regel wirklich gelöscht werden?",
+          confirmLabel: "Löschen",
+        });
+        if (!confirmed) {
           return;
         }
         try {

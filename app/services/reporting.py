@@ -2,9 +2,52 @@ import sqlite3
 from collections import defaultdict
 from datetime import date
 from statistics import median
-from typing import Any
+from typing import Any, Iterator
 
 from app.services.sankey import build_sankey
+
+
+_TRANSACTION_WITH_CATEGORY_SELECT = """
+        SELECT
+          t.id,
+          t.booking_date,
+          t.value_date,
+          t.amount,
+          t.currency,
+          t.counterparty_name,
+          t.description,
+          t.raw_text,
+          t.memo,
+          t.category_id,
+          t.excluded,
+          t.dedupe_key,
+          t.import_job_id,
+          t.raw_data_json,
+          t.created_at,
+          t.updated_at,
+          c.name AS category_name,
+          c.type AS category_type,
+          c.color AS category_color
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+"""
+
+_GROUPED_TRANSACTION_SELECT = """
+        SELECT
+          t.id,
+          t.booking_date,
+          t.amount,
+          t.description,
+          t.counterparty_name,
+          t.memo,
+          t.category_id,
+          t.excluded,
+          c.name AS category_name,
+          c.type AS category_type,
+          c.color AS category_color
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+"""
 
 
 def month_bounds(year: int, month: int) -> tuple[str, str]:
@@ -30,80 +73,42 @@ def year_bounds(year: int) -> tuple[str, str]:
     return date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
 
 
+def _fetch_transaction_rows(
+    conn: sqlite3.Connection,
+    query: str,
+    params: tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    rows = [dict(row) for row in conn.execute(query, params).fetchall()]
+    attach_splits(conn, rows)
+    return rows
+
+
 def list_transactions_for_period(conn: sqlite3.Connection, start_date: str, end_date: str) -> list[dict[str, Any]]:
-    raw_rows = conn.execute(
-        """
-        SELECT
-          t.id,
-          t.booking_date,
-          t.value_date,
-          t.amount,
-          t.currency,
-          t.counterparty_name,
-          t.description,
-          t.raw_text,
-          t.memo,
-          t.category_id,
-          t.excluded,
-          t.dedupe_key,
-          t.import_job_id,
-          t.raw_data_json,
-          t.created_at,
-          t.updated_at,
-          c.name AS category_name,
-          c.type AS category_type,
-          c.color AS category_color
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
+    return _fetch_transaction_rows(
+        conn,
+        _TRANSACTION_WITH_CATEGORY_SELECT
+        + """
         WHERE t.booking_date >= ? AND t.booking_date < ?
         ORDER BY t.booking_date DESC, t.id DESC
         """,
         (start_date, end_date),
-    ).fetchall()
-    rows = [dict(row) for row in raw_rows]
-    attach_splits(conn, rows)
-    return rows
+    )
 
 
 def list_all_transactions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    raw_rows = conn.execute(
-        """
-        SELECT
-          t.id,
-          t.booking_date,
-          t.value_date,
-          t.amount,
-          t.currency,
-          t.counterparty_name,
-          t.description,
-          t.raw_text,
-          t.memo,
-          t.category_id,
-          t.excluded,
-          t.dedupe_key,
-          t.import_job_id,
-          t.raw_data_json,
-          t.created_at,
-          t.updated_at,
-          c.name AS category_name,
-          c.type AS category_type,
-          c.color AS category_color
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
+    return _fetch_transaction_rows(
+        conn,
+        _TRANSACTION_WITH_CATEGORY_SELECT
+        + """
         ORDER BY t.booking_date ASC, t.id ASC
-        """
-    ).fetchall()
-    rows = [dict(row) for row in raw_rows]
-    attach_splits(conn, rows)
-    return rows
+        """,
+    )
 
 
 def attach_splits(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
-    tx_ids = [row["id"] for row in rows if "id" in row]
-    if not tx_ids:
-        return
+    tx_ids = [row["id"] for row in rows]
 
     placeholders = ",".join("?" for _ in tx_ids)
     split_rows = conn.execute(
@@ -136,28 +141,26 @@ def attach_splits(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
         row["splits"] = grouped.get(row["id"], [])
 
 
-def _row_components(row: dict[str, Any]) -> list[dict[str, Any]]:
+def _row_components(row: dict[str, Any]) -> Iterator[dict[str, Any]]:
     split_items = row.get("splits") or []
     if split_items:
-        return [
-            {
+        for split in split_items:
+            yield {
                 "amount": float(split["amount"]),
                 "category_name": split.get("category_name"),
                 "category_type": split.get("category_type"),
                 "category_color": split.get("category_color"),
                 "excluded": bool(split.get("excluded")),
             }
-            for split in split_items
-        ]
-    return [
-        {
-            "amount": float(row["amount"]),
-            "category_name": row.get("category_name"),
-            "category_type": row.get("category_type"),
-            "category_color": row.get("category_color"),
-            "excluded": False,
-        }
-    ]
+        return
+
+    yield {
+        "amount": float(row["amount"]),
+        "category_name": row.get("category_name"),
+        "category_type": row.get("category_type"),
+        "category_color": row.get("category_color"),
+        "excluded": False,
+    }
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -170,9 +173,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if row["excluded"]:
             continue
 
-        components = _row_components(row)
-
-        for component in components:
+        for component in _row_components(row):
             if component["excluded"]:
                 continue
             amount = float(component["amount"])
@@ -303,6 +304,7 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
     sorted_categories = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
     top_n = max(3, min(int(top_n_categories), 20))
     top_categories = [name for name, _ in sorted_categories[:top_n]]
+    top_categories_set = set(top_categories)
 
     violin_series: list[dict[str, Any]] = []
     for category in top_categories:
@@ -318,7 +320,7 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
         if any(value > 0 for value in values):
             stacked_series.append({"category": category, "values": values})
 
-    other_categories = [name for name in category_monthly_spending.keys() if name not in set(top_categories)]
+    other_categories = [name for name in category_monthly_spending if name not in top_categories_set]
     if other_categories and months:
         other_values: list[float] = []
         for month in months:
@@ -331,7 +333,7 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
 
     category_totals_payload: list[dict[str, Any]] = []
     for category, total in sorted_categories:
-        active_months = len([v for v in category_monthly_spending[category].values() if v > 0])
+        active_months = sum(1 for v in category_monthly_spending[category].values() if v > 0)
         avg_monthly = total / active_months if active_months > 0 else 0.0
         category_totals_payload.append(
             {
@@ -344,6 +346,7 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
 
     sorted_income_categories = sorted(income_type_totals.items(), key=lambda item: item[1], reverse=True)
     top_income_categories = [name for name, _ in sorted_income_categories[:top_n]]
+    top_income_categories_set = set(top_income_categories)
     income_stacked_series: list[dict[str, Any]] = []
     for category in top_income_categories:
         monthly_values = [round(income_category_monthly[category].get(month, 0.0), 2) for month in months]
@@ -357,7 +360,7 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
             }
         )
 
-    other_income_categories = [name for name in income_category_monthly.keys() if name not in set(top_income_categories)]
+    other_income_categories = [name for name in income_category_monthly if name not in top_income_categories_set]
     if other_income_categories and months:
         other_values: list[float] = []
         for month in months:
@@ -433,27 +436,13 @@ def list_categories(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def build_grouped_transactions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    raw_rows = conn.execute(
-        """
-        SELECT
-          t.id,
-          t.booking_date,
-          t.amount,
-          t.description,
-          t.counterparty_name,
-          t.memo,
-          t.category_id,
-          t.excluded,
-          c.name AS category_name,
-          c.type AS category_type,
-          c.color AS category_color
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
+    rows = _fetch_transaction_rows(
+        conn,
+        _GROUPED_TRANSACTION_SELECT
+        + """
         ORDER BY t.booking_date DESC, t.id DESC
-        """
-    ).fetchall()
-    rows = [dict(row) for row in raw_rows]
-    attach_splits(conn, rows)
+        """,
+    )
 
     grouped: dict[int, dict[str, Any]] = {}
     for row in rows:
@@ -461,12 +450,11 @@ def build_grouped_transactions(conn: sqlite3.Connection) -> list[dict[str, Any]]
         year = int(booking_date[:4])
         month = int(booking_date[5:7])
         quarter = ((month - 1) // 3) + 1
-        row_dict = row
 
         year_bucket = grouped.setdefault(year, {"year": year, "quarters": {}})
         quarter_bucket = year_bucket["quarters"].setdefault(quarter, {"quarter": quarter, "months": {}})
         month_bucket = quarter_bucket["months"].setdefault(month, {"month": month, "transactions": []})
-        month_bucket["transactions"].append(row_dict)
+        month_bucket["transactions"].append(row)
 
     years = []
     for year in sorted(grouped.keys(), reverse=True):

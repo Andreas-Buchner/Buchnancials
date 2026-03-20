@@ -36,3 +36,45 @@ def test_sankey_disambiguates_same_category_on_both_sides():
     assert "Uncategorized (Expense)" in sankey["nodes"]
     assert {"source": "Uncategorized (Income)", "target": "Net", "value": 1000} in sankey["links"]
     assert {"source": "Net", "target": "Uncategorized (Expense)", "value": 300} in sankey["links"]
+
+
+def test_sankey_includes_all_expected_nodes_for_surplus_case():
+    rows = [
+        {"amount": 3000, "excluded": 0, "category_name": "Salary"},
+        {"amount": 1200, "excluded": 0, "category_name": "Bonus"},
+        {"amount": 400, "excluded": 0, "category_name": "Dividends"},
+        {"amount": -1400, "excluded": 0, "category_name": "Rent"},
+        {"amount": -700, "excluded": 0, "category_name": "Travel"},
+        {"amount": -200, "excluded": 0, "category_name": "Food"},
+    ]
+
+    sankey = build_sankey(rows)
+
+    assert set(sankey["nodes"]) == {
+        "Salary",
+        "Bonus",
+        "Dividends",
+        "Net",
+        "Rent",
+        "Travel",
+        "Food",
+        "Savings",
+    }
+
+
+def test_sankey_includes_all_expected_nodes_for_shortfall_case():
+    rows = [
+        {"amount": 1500, "excluded": 0, "category_name": "Salary"},
+        {"amount": -1800, "excluded": 0, "category_name": "Rent"},
+        {"amount": -300, "excluded": 0, "category_name": "Food"},
+    ]
+
+    sankey = build_sankey(rows)
+
+    assert set(sankey["nodes"]) == {
+        "Salary",
+        "Shortfall",
+        "Net",
+        "Rent",
+        "Food",
+    }

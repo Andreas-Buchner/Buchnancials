@@ -10,6 +10,18 @@ from app.services.reporting import list_transactions_for_period, month_bounds
 router = APIRouter(tags=["transactions"])
 
 
+def _build_update_assignments(updates: dict[str, Any], updated_at: str) -> tuple[list[str], list[Any]]:
+    fields = []
+    values: list[Any] = []
+    for key, value in updates.items():
+        fields.append(f"{key} = ?")
+        values.append(int(value) if isinstance(value, bool) else value)
+
+    fields.append("updated_at = ?")
+    values.append(updated_at)
+    return fields, values
+
+
 def _fetch_transaction(conn: sqlite3.Connection, tx_id: int) -> dict[str, Any] | None:
     row = conn.execute(
         """
@@ -46,16 +58,7 @@ def patch_transactions_batch(payload: TransactionBatchPatch) -> dict:
             if not updates:
                 continue
 
-            fields = []
-            values = []
-            for key, value in updates.items():
-                fields.append(f"{key} = ?")
-                if isinstance(value, bool):
-                    values.append(int(value))
-                else:
-                    values.append(value)
-            fields.append("updated_at = ?")
-            values.append(utc_now_iso())
+            fields, values = _build_update_assignments(updates, utc_now_iso())
             values.append(tx_id)
 
             try:
@@ -149,17 +152,7 @@ def patch_transaction(transaction_id: int, payload: TransactionPatch) -> dict:
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided for update.")
 
-    fields = []
-    values = []
-    for key, value in updates.items():
-        fields.append(f"{key} = ?")
-        if isinstance(value, bool):
-            values.append(int(value))
-        else:
-            values.append(value)
-
-    fields.append("updated_at = ?")
-    values.append(utc_now_iso())
+    fields, values = _build_update_assignments(updates, utc_now_iso())
     values.append(transaction_id)
 
     with get_connection() as conn:
