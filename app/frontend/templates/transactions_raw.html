@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>Transaktionen</h2>
+  </div>
+  <p class="hint-text">Rohansicht aller Transaktionen mit Filter- und Sortierfunktionen für schnelle Zuordnung.</p>
+  <div class="stack-inline raw-filters">
+    <input type="search" id="raw-filter-search" placeholder="Suche in Beschreibung, Auftraggeber, Notiz..." />
+    <select id="raw-filter-type">
+      <option value="all">Alle Beträge</option>
+      <option value="income">Nur Einnahmen</option>
+      <option value="expense">Nur Ausgaben</option>
+    </select>
+    <select id="raw-filter-category">
+      <option value="all">Alle Kategorien</option>
+      <option value="none">Ohne Kategorie</option>
+    </select>
+    <select id="raw-filter-excluded">
+      <option value="all">Alle (inkl. ignoriert)</option>
+      <option value="active">Nur aktive</option>
+      <option value="excluded">Nur ignorierte</option>
+    </select>
+  </div>
+  <small id="raw-visible-count" class="hint-text"></small>
+</section>
+
+<section class="panel">
+  <div class="table-wrap">
+    <table class="tx-table tx-table-main raw-transactions-table" id="raw-transactions-table">
+      <thead>
+        <tr>
+          <th><button class="raw-sort-btn" data-sort="booking_date">Datum</button></th>
+          <th><button class="raw-sort-btn" data-sort="amount">Betrag</button></th>
+          <th><button class="raw-sort-btn" data-sort="description">Beschreibung</button></th>
+          <th><button class="raw-sort-btn" data-sort="counterparty_name">Auftraggeber</button></th>
+          <th><button class="raw-sort-btn" data-sort="memo">Notiz</button></th>
+          <th><button class="raw-sort-btn" data-sort="category_name">Kategorie</button></th>
+          <th><button class="raw-sort-btn" data-sort="split_count">Aufteilung</button></th>
+          <th><button class="raw-sort-btn" data-sort="excluded">Ignorieren</button></th>
+        </tr>
+      </thead>
+      <tbody id="raw-transactions-body"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script id="raw-transactions-data" type="application/json">{{ transactions | tojson }}</script>
+<script id="raw-categories-data" type="application/json">{{ categories | tojson }}</script>
+<script src="/static/js/transactions_raw.js?v=20260320-2"></script>
+{% endblock %}

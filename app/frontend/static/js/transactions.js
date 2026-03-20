@@ -1,19 +1,6 @@
 (function () {
   const BALANCE_NODE_LABEL = "Bilanzsumme";
-
-  const staged = new Map();
-  const saveBtn = document.getElementById("save-staged-btn");
-  const discardBtn = document.getElementById("discard-staged-btn");
-  const indicator = document.getElementById("unsaved-indicator");
-
-  const modal = document.getElementById("decision-modal");
-  const modalTitle = document.getElementById("decision-title");
-  const modalMessage = document.getElementById("decision-message");
-  const modalActions = document.getElementById("decision-actions");
-  if (modal) {
-    modal.hidden = true;
-    modal.setAttribute("hidden", "");
-  }
+  let sankeyExportCounter = 0;
 
   function normalizeCategoryLabel(value) {
     if (!value || !value.trim()) {
@@ -140,7 +127,7 @@
       nodes.push("Überschuss");
     }
     if (net < 0) {
-      nodes = ["Fehlbetrag", ...nodes];
+      nodes.push("Fehlbetrag");
     }
 
     const nodeColors = {};
@@ -161,6 +148,61 @@
     }
 
     return { nodes, links, node_colors: nodeColors };
+  }
+
+  function orderSankeyNodesForDisplay(nodes) {
+    const source = Array.isArray(nodes) ? nodes : [];
+    const bottomLabels = new Set(["Überschuss", "Fehlbetrag"]);
+    const regular = [];
+    const bottom = [];
+    source.forEach((label) => {
+      if (bottomLabels.has(label)) {
+        bottom.push(label);
+      } else {
+        regular.push(label);
+      }
+    });
+    return [...regular, ...bottom];
+  }
+
+  function orderSankeyLinksForDisplay(links, nodeIndex) {
+    const source = Array.isArray(links) ? links.slice() : [];
+    const idx = (label) => (nodeIndex.has(label) ? nodeIndex.get(label) : Number.MAX_SAFE_INTEGER);
+    return source.sort((a, b) => {
+      const aToBalance = a.target === BALANCE_NODE_LABEL;
+      const bToBalance = b.target === BALANCE_NODE_LABEL;
+      if (aToBalance !== bToBalance) {
+        return aToBalance ? -1 : 1;
+      }
+
+      const aFromBalance = a.source === BALANCE_NODE_LABEL;
+      const bFromBalance = b.source === BALANCE_NODE_LABEL;
+      if (aFromBalance !== bFromBalance) {
+        return aFromBalance ? 1 : -1;
+      }
+
+      if (aToBalance && bToBalance) {
+        const bySource = idx(a.source) - idx(b.source);
+        if (bySource !== 0) {
+          return bySource;
+        }
+      } else if (aFromBalance && bFromBalance) {
+        const byTarget = idx(a.target) - idx(b.target);
+        if (byTarget !== 0) {
+          return byTarget;
+        }
+      }
+
+      const bySource = idx(a.source) - idx(b.source);
+      if (bySource !== 0) {
+        return bySource;
+      }
+      const byTarget = idx(a.target) - idx(b.target);
+      if (byTarget !== 0) {
+        return byTarget;
+      }
+      return String(a.target || "").localeCompare(String(b.target || ""), "de");
+    });
   }
 
   function summarizeRows(rows) {
@@ -205,17 +247,174 @@
     }
   }
 
+  function slugifyFilenamePart(value) {
+    const normalized = String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return normalized
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+  }
+
+  function ensureSankeyChartId(el) {
+    if (!el.id) {
+      sankeyExportCounter += 1;
+      el.id = `overview-sankey-${sankeyExportCounter}`;
+    }
+    return el.id;
+  }
+
+  function getSankeyExportFilename(el) {
+    const detailsBlock = el.closest("details");
+    const label =
+      detailsBlock?.querySelector(":scope > summary .period-label")?.textContent?.trim() || "uebersicht";
+    const slug = slugifyFilenamePart(label) || "sankey";
+    return `buchnancials-sankey-${slug}.jpg`;
+  }
+
+  function getSankeyExportTitle(el) {
+    const detailsBlock = el.closest("details");
+    const label = detailsBlock?.querySelector(":scope > summary .period-label")?.textContent?.trim();
+    return label ? `Sankey · ${label}` : "Sankey";
+  }
+
+  function findSankeyChartContainer(el) {
+    return el.closest(".sankey-container") || el.parentElement;
+  }
+
+  function findSankeyExportHost(el) {
+    const chartContainer = findSankeyChartContainer(el);
+    if (!chartContainer) {
+      return null;
+    }
+    const hostParent = chartContainer.parentElement || chartContainer;
+    return { chartContainer, hostParent };
+  }
+
+  async function exportSankeyAsJpg(chartEl, filename) {
+    const width = Math.max(Math.round(chartEl.clientWidth || 900), 640);
+    const height = Math.max(Math.round(chartEl.clientHeight || 300), 280);
+    const priorPaperBg = chartEl.layout?.paper_bgcolor ?? "rgba(0,0,0,0)";
+    const priorPlotBg = chartEl.layout?.plot_bgcolor ?? "rgba(0,0,0,0)";
+    const priorTitle = chartEl.layout?.title ?? { text: "" };
+    const priorMarginTop = Number(chartEl.layout?.margin?.t ?? 10);
+    const exportTitle = chartEl.dataset.exportTitle || "Sankey";
+    try {
+      await window.Plotly.relayout(chartEl, {
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+        title: {
+          text: exportTitle,
+          x: 0.02,
+          xanchor: "left",
+          y: 0.98,
+          yanchor: "top",
+          font: { size: 15, color: "#1f2933" },
+        },
+        "margin.t": Math.max(priorMarginTop, 58),
+      });
+      const imageDataUrl = await window.Plotly.toImage(chartEl, {
+        format: "jpeg",
+        width,
+        height,
+        scale: 2,
+      });
+      const downloadLink = document.createElement("a");
+      downloadLink.href = imageDataUrl;
+      downloadLink.download = filename;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+    } finally {
+      try {
+        await window.Plotly.relayout(chartEl, {
+          paper_bgcolor: priorPaperBg,
+          plot_bgcolor: priorPlotBg,
+          title: priorTitle,
+          "margin.t": priorMarginTop,
+        });
+      } catch (err) {
+        // Keep export success path unaffected if background reset fails.
+      }
+    }
+  }
+
+  function setSankeyExportButtonVisibility(el, visible) {
+    const chartId = ensureSankeyChartId(el);
+    const host = findSankeyExportHost(el);
+    if (!host) {
+      return;
+    }
+    const button = host.hostParent.querySelector(`.sankey-export-btn[data-target-chart-id="${chartId}"]`);
+    if (button) {
+      button.hidden = !visible;
+    }
+  }
+
+  function ensureSankeyExportButton(el) {
+    const host = findSankeyExportHost(el);
+    if (!host) {
+      return;
+    }
+    const chartId = ensureSankeyChartId(el);
+    let row = host.hostParent.querySelector(`.plot-export-row[data-target-chart-id="${chartId}"]`);
+    let button = row ? row.querySelector(".sankey-export-btn") : null;
+    if (!row) {
+      row = document.createElement("div");
+      row.className = "plot-export-row";
+      row.dataset.targetChartId = chartId;
+      const nextSibling = host.chartContainer.nextSibling;
+      if (nextSibling) {
+        host.chartContainer.parentElement.insertBefore(row, nextSibling);
+      } else {
+        host.chartContainer.parentElement.appendChild(row);
+      }
+    }
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn-secondary sankey-export-btn";
+      button.textContent = "JPG exportieren";
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const targetId = button.dataset.targetChartId;
+        const target = targetId ? document.getElementById(targetId) : null;
+        if (!target || !window.Plotly) {
+          return;
+        }
+        button.disabled = true;
+        try {
+          await exportSankeyAsJpg(target, button.dataset.filename || "buchnancials-sankey.jpg");
+          window.Buchnancials.notify("Sankey als JPG exportiert.", "success");
+        } catch (err) {
+          window.Buchnancials.notify("Sankey-Export fehlgeschlagen.", "error");
+        } finally {
+          button.disabled = false;
+        }
+      });
+      row.appendChild(button);
+    }
+    button.dataset.targetChartId = chartId;
+    button.dataset.filename = getSankeyExportFilename(el);
+    el.dataset.exportTitle = getSankeyExportTitle(el);
+    button.hidden = false;
+  }
+
   function renderSankey(el, sankey) {
     if (!window.Plotly) {
       return;
     }
     if (!Array.isArray(sankey.nodes) || sankey.nodes.length === 0) {
       el.innerHTML = "<small>Für diesen Zeitraum liegen keine Daten vor.</small>";
+      setSankeyExportButtonVisibility(el, false);
       return;
     }
 
+    const orderedNodes = orderSankeyNodesForDisplay(sankey.nodes);
     const index = new Map();
-    sankey.nodes.forEach((label, i) => index.set(label, i));
+    orderedNodes.forEach((label, i) => index.set(label, i));
+    const orderedLinks = orderSankeyLinksForDisplay(sankey.links, index);
     const source = [];
     const target = [];
     const value = [];
@@ -224,7 +423,7 @@
 
     const incomeNodes = new Set();
     const expenseNodes = new Set();
-    sankey.links.forEach((link) => {
+    orderedLinks.forEach((link) => {
       if (link.target === BALANCE_NODE_LABEL) {
         incomeNodes.add(link.source);
       } else if (link.source === BALANCE_NODE_LABEL) {
@@ -234,20 +433,19 @@
 
     const inbound = new Map();
     const outbound = new Map();
-    sankey.links.forEach((link) => {
+    orderedLinks.forEach((link) => {
       outbound.set(link.source, (outbound.get(link.source) || 0) + Number(link.value || 0));
       inbound.set(link.target, (inbound.get(link.target) || 0) + Number(link.value || 0));
     });
-    const displayLabels = sankey.nodes.map((label) => {
+    const displayLabels = orderedNodes.map((label) => {
       const total = Math.max(inbound.get(label) || 0, outbound.get(label) || 0);
       if (total <= 0) {
         return label;
       }
       return `${label} · ${formatEuroNode(total)}`;
     });
-
     const providedNodeColors = sankey.node_colors || {};
-    const nodeColors = sankey.nodes.map((label) => {
+    const nodeColors = orderedNodes.map((label) => {
       if (providedNodeColors[label]) {
         return providedNodeColors[label];
       }
@@ -269,7 +467,7 @@
       return "#8a9ba8";
     });
 
-    sankey.links.forEach((link) => {
+    orderedLinks.forEach((link) => {
       source.push(index.get(link.source));
       target.push(index.get(link.target));
       value.push(link.value);
@@ -316,6 +514,7 @@
       },
       { displayModeBar: false, responsive: true }
     );
+    ensureSankeyExportButton(el);
   }
 
   function parseRowAmount(row) {
@@ -416,6 +615,10 @@
     if (!chart || !monthBlock.open) {
       return;
     }
+    const chartContainer = chart.closest(".sankey-container");
+    if (chartContainer && chartContainer.hidden) {
+      return;
+    }
     renderSankey(chart, buildSankey(rows));
   }
 
@@ -427,6 +630,10 @@
     updateSummaryPills(quarterBlock, summarizeRows(rows));
     const chart = quarterBlock.querySelector(".quarter-sankey");
     if (!chart || !quarterBlock.open) {
+      return;
+    }
+    const chartContainer = chart.closest(".sankey-container");
+    if (chartContainer && chartContainer.hidden) {
       return;
     }
     renderSankey(chart, buildSankey(rows));
@@ -481,7 +688,7 @@
   }
 
   function rowNeedsAttention(row) {
-    return row.classList.contains("tx-row-uncategorized") || row.classList.contains("tx-row-dirty");
+    return row.classList.contains("tx-row-uncategorized");
   }
 
   function ensureAttentionExpansionForRow(row) {
@@ -509,50 +716,51 @@
     });
   }
 
-  function ensureEntry(id) {
-    if (!staged.has(id)) {
-      staged.set(id, { id: Number(id) });
+  function findOwnSankeyContainer(detailsBlock) {
+    if (!detailsBlock) {
+      return null;
     }
-    return staged.get(id);
+    for (const child of detailsBlock.children) {
+      if (child.classList && child.classList.contains("sankey-container")) {
+        return child;
+      }
+    }
+    return null;
   }
 
-  function cleanupEntry(id) {
-    const entry = staged.get(id);
-    if (!entry) {
+  function setSankeyToggleLabel(button, isHidden) {
+    if (!button) {
       return;
     }
-    const keys = Object.keys(entry).filter((k) => k !== "id");
-    if (keys.length === 0) {
-      staged.delete(id);
-    }
+    button.textContent = isHidden ? "Sankey anzeigen" : "Sankey ausblenden";
   }
 
-  function refreshIndicator() {
-    indicator.textContent = `Ungespeicherte Änderungen: ${staged.size}`;
-  }
-
-  function setFieldDirtyClass(field, isDirty) {
-    if (!field) {
-      return;
-    }
-    field.classList.toggle("field-dirty", isDirty);
-  }
-
-  function updateRowDirtyState(row) {
-    const category = row.querySelector(".tx-category");
-    const memo = row.querySelector(".tx-memo");
-    const excluded = row.querySelector(".tx-excluded");
-    const categoryDirty = category ? (category.value || "") !== (category.dataset.initial || "") : false;
-    const memoDirty = memo ? memo.value !== (memo.dataset.initial || "") : false;
-    const excludedDirty = excluded
-      ? excluded.checked !== (excluded.dataset.initial === "1")
-      : false;
-
-    setFieldDirtyClass(category, categoryDirty);
-    setFieldDirtyClass(memo, memoDirty);
-    setFieldDirtyClass(excluded, excludedDirty);
-    row.classList.toggle("tx-row-dirty", categoryDirty || memoDirty || excludedDirty);
-    ensureAttentionExpansionForRow(row);
+  function wireSankeyVisibilityToggles() {
+    document.querySelectorAll(".sankey-toggle-btn").forEach((button) => {
+      const detailsBlock = button.closest("details");
+      const container = findOwnSankeyContainer(detailsBlock);
+      if (!detailsBlock || !container) {
+        return;
+      }
+      setSankeyToggleLabel(button, container.hidden);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        container.hidden = !container.hidden;
+        setSankeyToggleLabel(button, container.hidden);
+        if (container.hidden || !detailsBlock.open) {
+          return;
+        }
+        if (detailsBlock.classList.contains("month-block")) {
+          refreshHierarchyForMonthBlock(detailsBlock);
+          return;
+        }
+        if (detailsBlock.classList.contains("quarter-block")) {
+          refreshQuarterBlock(detailsBlock);
+          refreshYearBlock(detailsBlock.closest(".year-block"));
+        }
+      });
+    });
   }
 
   function setRowInitialStateFromCurrent(row) {
@@ -561,20 +769,26 @@
     const excluded = row.querySelector(".tx-excluded");
     if (category) {
       category.dataset.initial = category.value || "";
+      category.classList.remove("field-dirty");
     }
     if (memo) {
       memo.dataset.initial = memo.value || "";
+      memo.classList.remove("field-dirty");
     }
     if (excluded) {
       excluded.dataset.initial = excluded.checked ? "1" : "0";
+      excluded.classList.remove("field-dirty");
     }
-    updateRowDirtyState(row);
+    row.classList.remove("tx-row-dirty");
+    ensureAttentionExpansionForRow(row);
   }
 
-  function setFieldChange(id, field, value) {
-    const entry = ensureEntry(id);
-    entry[field] = value;
-    cleanupEntry(id);
+  async function patchTransaction(transactionId, payload) {
+    return window.Buchnancials.jsonFetch(`/transactions/${transactionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
 
   function findSplitEditorRowForTxId(transactionId) {
@@ -655,10 +869,14 @@
   }
 
   function updateRowVisualState(row) {
-    const { isSplit } = updateSplitStateForRow(row);
+    const { splitItems, isSplit } = updateSplitStateForRow(row);
     const isExcluded = Boolean(row.querySelector(".tx-excluded")?.checked);
     const categorySelect = row.querySelector(".tx-category");
-    const isUncategorized = !isExcluded && !isSplit && categorySelect && (categorySelect.value || "") === "";
+    const hasUncategorizedSplitComponent =
+      isSplit && splitItems.some((split) => !split.excluded && split.category_id === null);
+    const isUncategorized =
+      !isExcluded &&
+      ((isSplit && hasUncategorizedSplitComponent) || (!isSplit && categorySelect && (categorySelect.value || "") === ""));
 
     row.classList.toggle("tx-row-excluded", isExcluded);
     row.classList.toggle("tx-row-uncategorized", Boolean(isUncategorized));
@@ -771,28 +989,23 @@
     if (!txRow) {
       return;
     }
-    const txAmount = Number(txRow?.dataset.transactionAmount || 0);
+
+    const txAmount = Number(txRow.dataset.transactionAmount || 0);
     const categoryOptionsHtml = getCategoryOptionsHtml(txRow);
     txRow.classList.add("tx-row-split-editing");
-    const categorySelect = txRow.querySelector(".tx-category");
-    if (categorySelect) {
-      const initial = categorySelect.dataset.initial || "";
-      if ((categorySelect.value || "") !== "") {
-        categorySelect.value = "";
-        if (initial === "") {
-          const entry = ensureEntry(String(transactionId));
-          delete entry.category_id;
-          cleanupEntry(String(transactionId));
-        } else {
-          setFieldChange(String(transactionId), "category_id", null);
-        }
-        refreshIndicator();
-        updateRowDirtyState(txRow);
-      }
-    }
     updateRowVisualState(txRow);
 
-    const splitData = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
+    let splitData;
+    try {
+      splitData = await window.Buchnancials.jsonFetch(`/transactions/${transactionId}/splits`);
+    } catch (err) {
+      editorRow.hidden = true;
+      txRow.classList.remove("tx-row-split-editing");
+      updateRowVisualState(txRow);
+      window.Buchnancials.notify(err.message, "error");
+      return;
+    }
+
     lineContainer.innerHTML = "";
     if (splitData.splits.length <= 1) {
       let firstSplit = null;
@@ -919,44 +1132,16 @@
         txRow.dataset.splits = JSON.stringify(nextSplits);
         txRow._cachedSplitsRaw = null;
         txRow._cachedSplits = null;
-        const stagedEntry = ensureEntry(String(transactionId));
-        delete stagedEntry.category_id;
-        cleanupEntry(String(transactionId));
-        refreshIndicator();
         editorRow.hidden = true;
         txRow.classList.remove("tx-row-split-editing");
         updateRowVisualState(txRow);
+        setRowInitialStateFromCurrent(txRow);
         refreshHierarchyForRow(txRow);
         window.Buchnancials.notify("Aufteilung gespeichert.", "success");
       } catch (err) {
         window.Buchnancials.notify(err.message, "error");
       }
     };
-  }
-
-  function askDecision({ title, message, actions }) {
-    if (!modal || !modalTitle || !modalMessage || !modalActions) {
-      const fallback = window.confirm(message);
-      return Promise.resolve(fallback ? actions[actions.length - 1].value : actions[0].value);
-    }
-    return new Promise((resolve) => {
-      modalTitle.textContent = title;
-      modalMessage.textContent = message;
-      modalActions.innerHTML = "";
-      actions.forEach((action) => {
-        const button = document.createElement("button");
-        button.className = action.variant === "primary" ? "btn-primary" : "btn-secondary";
-        button.textContent = action.label;
-        button.addEventListener("click", () => {
-          modal.hidden = true;
-          modal.setAttribute("hidden", "");
-          resolve(action.value);
-        });
-        modalActions.appendChild(button);
-      });
-      modal.hidden = false;
-      modal.removeAttribute("hidden");
-    });
   }
 
   function setInitialStateFromCurrentDom() {
@@ -968,66 +1153,88 @@
   }
 
   document.querySelectorAll("tr.tx-row").forEach((row) => {
-    const id = row.dataset.transactionId;
+    const id = Number(row.dataset.transactionId);
     const category = row.querySelector(".tx-category");
     const memo = row.querySelector(".tx-memo");
     const excluded = row.querySelector(".tx-excluded");
 
-    if (!category || !memo || !excluded) {
+    if (!Number.isFinite(id) || !category || !memo || !excluded) {
       return;
     }
 
-    category.addEventListener("change", () => {
-      const initial = category.dataset.initial || "";
+    category.addEventListener("change", async () => {
+      const previous = category.dataset.initial || "";
       const current = category.value || "";
-      if (current === initial) {
-        const entry = ensureEntry(id);
-        delete entry.category_id;
-        cleanupEntry(id);
-      } else {
-        setFieldChange(id, "category_id", current === "" ? null : Number(current));
+      if (current === previous) {
+        updateRowVisualState(row);
+        refreshHierarchyForRow(row);
+        return;
       }
-      refreshIndicator();
-      updateRowDirtyState(row);
-      updateRowVisualState(row);
-      refreshHierarchyForRow(row);
+
+      category.disabled = true;
+      try {
+        await patchTransaction(id, { category_id: current === "" ? null : Number(current) });
+        setRowInitialStateFromCurrent(row);
+        updateRowVisualState(row);
+        refreshHierarchyForRow(row);
+      } catch (err) {
+        category.value = previous;
+        updateRowVisualState(row);
+        refreshHierarchyForRow(row);
+        window.Buchnancials.notify(err.message, "error");
+      } finally {
+        category.disabled = false;
+      }
     });
 
-    let memoUpdateFrame = null;
-    memo.addEventListener("input", () => {
-      if (memoUpdateFrame !== null) {
-        window.cancelAnimationFrame(memoUpdateFrame);
+    memo.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        memo.blur();
       }
-      memoUpdateFrame = window.requestAnimationFrame(() => {
-        memoUpdateFrame = null;
-        const initial = memo.dataset.initial || "";
-        const current = memo.value;
-        if (current === initial) {
-          const entry = ensureEntry(id);
-          delete entry.memo;
-          cleanupEntry(id);
-        } else {
-          setFieldChange(id, "memo", current);
-        }
-        refreshIndicator();
-        updateRowDirtyState(row);
-      });
     });
 
-    excluded.addEventListener("change", () => {
-      const initial = excluded.dataset.initial === "1";
+    memo.addEventListener("blur", async () => {
+      const previous = memo.dataset.initial || "";
+      const current = memo.value;
+      if (current === previous) {
+        return;
+      }
+
+      memo.disabled = true;
+      try {
+        await patchTransaction(id, { memo: current });
+        setRowInitialStateFromCurrent(row);
+      } catch (err) {
+        memo.value = previous;
+        window.Buchnancials.notify(err.message, "error");
+      } finally {
+        memo.disabled = false;
+      }
+    });
+
+    excluded.addEventListener("change", async () => {
+      const previous = excluded.dataset.initial === "1";
       const current = excluded.checked;
-      if (current === initial) {
-        const entry = ensureEntry(id);
-        delete entry.excluded;
-        cleanupEntry(id);
-      } else {
-        setFieldChange(id, "excluded", current);
+      if (current === previous) {
+        updateRowVisualState(row);
+        refreshHierarchyForRow(row);
+        return;
       }
-      refreshIndicator();
-      updateRowDirtyState(row);
-      updateRowVisualState(row);
-      refreshHierarchyForRow(row);
+
+      excluded.disabled = true;
+      try {
+        await patchTransaction(id, { excluded: current });
+        setRowInitialStateFromCurrent(row);
+        updateRowVisualState(row);
+        refreshHierarchyForRow(row);
+      } catch (err) {
+        excluded.checked = previous;
+        updateRowVisualState(row);
+        refreshHierarchyForRow(row);
+        window.Buchnancials.notify(err.message, "error");
+      } finally {
+        excluded.disabled = false;
+      }
     });
   });
 
@@ -1035,128 +1242,6 @@
     button.addEventListener("click", async () => {
       const transactionId = button.dataset.transactionId;
       await openSplitEditor(transactionId);
-    });
-  });
-
-  async function saveChanges({ reload = false } = {}) {
-    if (staged.size === 0) {
-      return true;
-    }
-    const updates = Array.from(staged.values());
-    const changedIds = updates.map((item) => Number(item.id));
-    const response = await window.Buchnancials.jsonFetch("/transactions/batch", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updates }),
-    });
-    if (response.errors && response.errors.length > 0) {
-      throw new Error(`Speichern abgeschlossen, aber ${response.errors.length} Fehler sind aufgetreten.`);
-    }
-    changedIds.forEach((id) => {
-      const row = document.querySelector(`tr.tx-row[data-transaction-id="${id}"]`);
-      if (row) {
-        setRowInitialStateFromCurrent(row);
-        updateRowVisualState(row);
-      }
-    });
-    staged.clear();
-    refreshIndicator();
-    window.Buchnancials.notify(
-      changedIds.length === 1 ? "1 Änderung gespeichert." : `${changedIds.length} Änderungen gespeichert.`,
-      "success"
-    );
-    if (reload) {
-      window.location.reload();
-    }
-    return true;
-  }
-
-  async function resolveUnsaved(actionAfterResolve) {
-    if (staged.size === 0) {
-      actionAfterResolve();
-      return;
-    }
-
-    const choice = await askDecision({
-      title: "Ungespeicherte Änderungen",
-      message: "Es gibt ungespeicherte Änderungen. Was soll vor dem Fortfahren passieren?",
-      actions: [
-        { value: "stay", label: "Hier bleiben", variant: "secondary" },
-        { value: "discard", label: "Verwerfen", variant: "secondary" },
-        { value: "save", label: "Speichern und weiter", variant: "primary" },
-      ],
-    });
-
-    if (choice === "stay") {
-      return;
-    }
-    if (choice === "discard") {
-      staged.clear();
-      refreshIndicator();
-      actionAfterResolve();
-      return;
-    }
-    if (choice === "save") {
-      try {
-        await saveChanges({ reload: false });
-      } catch (err) {
-        window.Buchnancials.notify(err.message, "error");
-        return;
-      }
-      actionAfterResolve();
-    }
-  }
-
-  if (saveBtn) {
-    saveBtn.addEventListener("click", async () => {
-      try {
-        await saveChanges({ reload: false });
-      } catch (err) {
-        window.Buchnancials.notify(err.message, "error");
-      }
-    });
-  }
-
-  if (discardBtn) {
-    discardBtn.addEventListener("click", async () => {
-      if (staged.size === 0) {
-        return;
-      }
-      const choice = await askDecision({
-        title: "Ungespeicherte Änderungen verwerfen?",
-        message: "Dadurch werden alle ungespeicherten Änderungen auf dieser Seite entfernt.",
-        actions: [
-          { value: "cancel", label: "Abbrechen", variant: "secondary" },
-          { value: "discard", label: "Verwerfen", variant: "primary" },
-        ],
-      });
-      if (choice !== "discard") {
-        return;
-      }
-      staged.clear();
-      refreshIndicator();
-      window.location.reload();
-    });
-  }
-
-  window.addEventListener("beforeunload", (event) => {
-    if (staged.size === 0) {
-      return;
-    }
-    event.preventDefault();
-    event.returnValue = "";
-  });
-
-  document.querySelectorAll("[data-nav-link]").forEach((link) => {
-    link.addEventListener("click", async (event) => {
-      if (staged.size === 0) {
-        return;
-      }
-      event.preventDefault();
-      const href = link.getAttribute("href");
-      await resolveUnsaved(() => {
-        window.location.href = href;
-      });
     });
   });
 
@@ -1186,10 +1271,9 @@
     });
   });
 
+  wireSankeyVisibilityToggles();
   suppressToggleRefresh = true;
   setInitialStateFromCurrentDom();
   suppressToggleRefresh = false;
-  staged.clear();
-  refreshIndicator();
   refreshOpenSankeysFromDom();
 })();

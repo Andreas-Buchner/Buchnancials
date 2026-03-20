@@ -107,7 +107,7 @@
   }
 
   async function loadCategories() {
-    categories = await window.Buchnancials.jsonFetch("/categories?include_inactive=false");
+    categories = await window.Buchnancials.jsonFetch("/categories");
     categorySelect.innerHTML = categoryOptions(null);
   }
 

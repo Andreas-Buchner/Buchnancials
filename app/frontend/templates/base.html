@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Buchnancials</title>
+    <link rel="icon" type="image/png" href="/static/img/logo.png" />
+    <link rel="shortcut icon" href="/static/img/logo.png" />
+    <link rel="apple-touch-icon" href="/static/img/logo.png" />
+    <meta property="og:image" content="/static/img/logo.png" />
+    <meta name="twitter:image" content="/static/img/logo.png" />
     <link rel="stylesheet" href="/static/css/styles.css" />
     {% block head_extra %}{% endblock %}
   </head>
@@ -15,7 +20,8 @@
           <h1>Buchnancials</h1>
         </a>
         <nav>
-          <a href="/" data-nav-link>Transaktionen</a>
+          <a href="/" data-nav-link>Übersicht</a>
+          <a href="/transactions/raw" data-nav-link>Transaktionen</a>
           <a href="/planning" data-nav-link>Dashboards</a>
           <a href="/import" data-nav-link>Import</a>
           <a href="/categories/manage" data-nav-link>Kategorien</a>

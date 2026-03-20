@@ -88,13 +88,29 @@ def build_sankey(rows: list[dict[str, Any]]) -> dict[str, Any]:
         links.append({"source": "Shortfall", "target": "Net", "value": abs(net), "color": "rgba(123, 80, 80, 0.58)"})
 
     # Keep node order stable and human-friendly.
-    income_nodes = sorted([income_node_name(category) for category in income_links.keys()])
-    expense_nodes = sorted([expense_node_name(category) for category in expense_links.keys()])
+    income_nodes = sorted((income_node_name(category) for category in income_links.keys()), key=str.casefold)
+    expense_nodes = sorted((expense_node_name(category) for category in expense_links.keys()), key=str.casefold)
     ordered_nodes = income_nodes + ["Net"] + expense_nodes
     if "Savings" in nodes:
         ordered_nodes.append("Savings")
     if "Shortfall" in nodes:
-        ordered_nodes = ["Shortfall"] + ordered_nodes
+        ordered_nodes.append("Shortfall")
+
+    node_index = {label: idx for idx, label in enumerate(ordered_nodes)}
+
+    # Emit links in node-order direction to make client-side rendering deterministic.
+    def link_sort_key(link: dict[str, Any]) -> tuple[int, int, int]:
+        source = str(link.get("source", ""))
+        target = str(link.get("target", ""))
+        if target == "Net":
+            group = 0
+        elif source == "Net":
+            group = 1
+        else:
+            group = 2
+        return (group, node_index.get(source, 10_000), node_index.get(target, 10_000))
+
+    links.sort(key=link_sort_key)
 
     node_colors: dict[str, str] = {"Saldo": "#121212", "Net": "#121212"}
     for category in income_links.keys():

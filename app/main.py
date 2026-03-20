@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plotly.offline import get_plotlyjs
@@ -15,7 +15,7 @@ from app.api.routes_transactions import router as transactions_router
 from app.core.config import get_settings
 from app.core.db import get_connection, init_db
 from app.core.paths import STATIC_DIR, TEMPLATES_DIR, ensure_data_dirs
-from app.services.reporting import build_grouped_transactions, list_categories, summarize
+from app.services.reporting import build_grouped_transactions, list_all_transactions, list_categories, summarize
 from app.services.sankey import build_sankey
 
 app = FastAPI(title="Buchnancials")
@@ -51,6 +51,11 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(STATIC_DIR / "img" / "logo.png", media_type="image/png")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     now = datetime.now()
@@ -60,7 +65,7 @@ def index(request: Request):
 
     with get_connection() as conn:
         years = build_grouped_transactions(conn)
-        categories = list_categories(conn, include_inactive=True)
+        categories = list_categories(conn)
 
     for year_bucket in years:
         year_rows: list[dict] = []
@@ -117,3 +122,18 @@ def rules_page(request: Request):
 @app.get("/planning", response_class=HTMLResponse)
 def planning_page(request: Request):
     return templates.TemplateResponse("planning.html", {"request": request, "plotly_js": get_plotlyjs()})
+
+
+@app.get("/transactions/raw", response_class=HTMLResponse)
+def transactions_raw_page(request: Request):
+    with get_connection() as conn:
+        categories = list_categories(conn)
+        transactions = list_all_transactions(conn)
+    return templates.TemplateResponse(
+        "transactions_raw.html",
+        {
+            "request": request,
+            "transactions": transactions,
+            "categories": categories,
+        },
+    )

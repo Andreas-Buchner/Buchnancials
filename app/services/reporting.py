@@ -4,6 +4,8 @@ from datetime import date
 from statistics import median
 from typing import Any
 
+from app.services.sankey import build_sankey
+
 
 def month_bounds(year: int, month: int) -> tuple[str, str]:
     start = date(year, month, 1)
@@ -142,6 +144,7 @@ def _row_components(row: dict[str, Any]) -> list[dict[str, Any]]:
                 "amount": float(split["amount"]),
                 "category_name": split.get("category_name"),
                 "category_type": split.get("category_type"),
+                "category_color": split.get("category_color"),
                 "excluded": bool(split.get("excluded")),
             }
             for split in split_items
@@ -151,6 +154,7 @@ def _row_components(row: dict[str, Any]) -> list[dict[str, Any]]:
             "amount": float(row["amount"]),
             "category_name": row.get("category_name"),
             "category_type": row.get("category_type"),
+            "category_color": row.get("category_color"),
             "excluded": False,
         }
     ]
@@ -232,11 +236,18 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
             "category_totals": [],
             "violin_series": [],
             "stacked_bar": {"months": [], "series": []},
+            "income_stacked_bar": {"months": [], "series": []},
+            "yearly_average_sankey": [],
         }
 
     monthly_totals: dict[str, dict[str, float]] = {}
     category_monthly_spending: dict[str, dict[str, float]] = defaultdict(dict)
     category_totals: dict[str, float] = defaultdict(float)
+    income_type_totals: dict[str, float] = defaultdict(float)
+    income_category_monthly: dict[str, dict[str, float]] = defaultdict(dict)
+    income_type_colors: dict[str, str] = {}
+    yearly_months: dict[int, set[str]] = defaultdict(set)
+    yearly_category_totals: dict[int, dict[tuple[str, str, str | None], float]] = defaultdict(lambda: defaultdict(float))
 
     included_tx_count = 0
     for row in rows:
@@ -244,21 +255,34 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
             continue
         included_tx_count += 1
         month_key = str(row["booking_date"])[:7]
+        year = int(str(row["booking_date"])[:4])
         bucket = monthly_totals.setdefault(month_key, {"income": 0.0, "expenses": 0.0})
+        yearly_months[year].add(month_key)
 
         for component in _row_components(row):
             if component["excluded"]:
                 continue
             amount = float(component["amount"])
+            category = component.get("category_name") or "Ohne Kategorie"
+            category_type = component.get("category_type") or ("income" if amount >= 0 else "expense")
+            category_color = component.get("category_color")
+
             if amount >= 0:
                 bucket["income"] += amount
+                income_type_totals[category] += amount
+                income_month_bucket = income_category_monthly[category]
+                income_month_bucket[month_key] = income_month_bucket.get(month_key, 0.0) + amount
+                if category_color and category not in income_type_colors:
+                    income_type_colors[category] = str(category_color)
             else:
                 expense_value = abs(amount)
                 bucket["expenses"] += expense_value
-                category = component.get("category_name") or "Ohne Kategorie"
                 category_totals[category] += expense_value
                 category_month = category_monthly_spending[category]
                 category_month[month_key] = category_month.get(month_key, 0.0) + expense_value
+
+            yearly_key = (category, category_type, str(category_color) if category_color else None)
+            yearly_category_totals[year][yearly_key] += amount
 
     months = sorted(monthly_totals.keys())
     monthly_totals_list: list[dict[str, Any]] = []
@@ -318,6 +342,63 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
             }
         )
 
+    sorted_income_categories = sorted(income_type_totals.items(), key=lambda item: item[1], reverse=True)
+    top_income_categories = [name for name, _ in sorted_income_categories[:top_n]]
+    income_stacked_series: list[dict[str, Any]] = []
+    for category in top_income_categories:
+        monthly_values = [round(income_category_monthly[category].get(month, 0.0), 2) for month in months]
+        if not any(value > 0 for value in monthly_values):
+            continue
+        income_stacked_series.append(
+            {
+                "category": category,
+                "values": monthly_values,
+                "color": income_type_colors.get(category),
+            }
+        )
+
+    other_income_categories = [name for name in income_category_monthly.keys() if name not in set(top_income_categories)]
+    if other_income_categories and months:
+        other_values: list[float] = []
+        for month in months:
+            total_for_month = 0.0
+            for category in other_income_categories:
+                total_for_month += income_category_monthly[category].get(month, 0.0)
+            other_values.append(round(total_for_month, 2))
+        if any(value > 0 for value in other_values):
+            income_stacked_series.append({"category": "Andere", "values": other_values, "color": "#8aa59a"})
+
+    yearly_average_sankey_payload: list[dict[str, Any]] = []
+    for year in sorted(yearly_category_totals.keys(), reverse=True):
+        months_covered = len(yearly_months.get(year, set()))
+        if months_covered == 0:
+            continue
+
+        average_rows: list[dict[str, Any]] = []
+        for (category, category_type, category_color), total in sorted(
+            yearly_category_totals[year].items(), key=lambda item: item[0][0].lower()
+        ):
+            average_amount = total / months_covered
+            if abs(average_amount) < 0.005:
+                continue
+            average_rows.append(
+                {
+                    "amount": round(average_amount, 2),
+                    "category_name": category,
+                    "category_type": category_type,
+                    "category_color": category_color,
+                    "excluded": False,
+                }
+            )
+
+        yearly_average_sankey_payload.append(
+            {
+                "year": year,
+                "months_covered": months_covered,
+                "sankey": build_sankey(average_rows),
+            }
+        )
+
     return {
         "overview": {
             "months_covered": len(months),
@@ -335,27 +416,19 @@ def build_planning_dataset(conn: sqlite3.Connection, top_n_categories: int = 8) 
         "category_totals": category_totals_payload,
         "violin_series": violin_series,
         "stacked_bar": {"months": months, "series": stacked_series},
+        "income_stacked_bar": {"months": months, "series": income_stacked_series},
+        "yearly_average_sankey": yearly_average_sankey_payload,
     }
 
 
-def list_categories(conn: sqlite3.Connection, include_inactive: bool = True) -> list[dict[str, Any]]:
-    if include_inactive:
-        rows = conn.execute(
-            """
-            SELECT id, name, type, color, active
-            FROM categories
-            ORDER BY type, active DESC, name
-            """
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """
-            SELECT id, name, type, color, active
-            FROM categories
-            WHERE active = 1
-            ORDER BY type, name
-            """
-        ).fetchall()
+def list_categories(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT id, name, type, color
+        FROM categories
+        ORDER BY type, name
+        """
+    ).fetchall()
     return [dict(row) for row in rows]
 
 

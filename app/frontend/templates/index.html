@@ -3,7 +3,7 @@
 {% block content %}
 <section class="panel">
   <div class="panel-header">
-    <h2>Transaktionen</h2>
+    <h2>Übersicht</h2>
   </div>
   {% if not has_transactions %}
   <div class="empty-state">
@@ -11,10 +11,10 @@
     <a href="/import" class="btn-primary" data-nav-link>Zum Import</a>
   </div>
   {% endif %}
-  {% for year in years %}
+{% for year in years %}
   <details class="year-block" {% if year.is_current_year %}open{% endif %}>
     <summary>
-      <strong>{{ year.year }}</strong>
+      <strong class="period-label period-label-year">{{ year.year }}</strong>
       <span class="summary-pill income">Einnahmen {{ year.summary.total_income|eur }}</span>
       <span class="summary-pill expense">Ausgaben {{ year.summary.total_expenses|eur }}</span>
       <span class="summary-pill">Saldo {{ year.summary.net_cash_flow|eur }}</span>
@@ -25,23 +25,29 @@
     {% for quarter in year.quarters %}
     <details class="quarter-block" {% if quarter.is_current_quarter %}open{% endif %}>
       <summary>
-        <strong>Quartal {{ quarter.quarter }}</strong>
+        <strong class="period-label period-label-quarter">Quartal {{ quarter.quarter }}</strong>
         <span class="summary-pill income">Einnahmen {{ quarter.summary.total_income|eur }}</span>
         <span class="summary-pill expense">Ausgaben {{ quarter.summary.total_expenses|eur }}</span>
         <span class="summary-pill">Saldo {{ quarter.summary.net_cash_flow|eur }}</span>
+        <button type="button" class="btn-secondary sankey-toggle-btn">
+          {% if quarter.is_current_quarter %}Sankey ausblenden{% else %}Sankey anzeigen{% endif %}
+        </button>
       </summary>
-      <div class="sankey-container">
+      <div class="sankey-container" {% if not quarter.is_current_quarter %}hidden{% endif %}>
         <div class="sankey-chart quarter-sankey" data-sankey='{{ quarter.sankey | tojson }}'></div>
       </div>
       {% for month in quarter.months %}
       <details class="month-block" {% if month.is_current_month %}open{% endif %}>
         <summary>
-          <strong>{{ year.year }}-{{ "%02d"|format(month.month) }}</strong>
+          <strong class="period-label period-label-month">{{ year.year }}-{{ "%02d"|format(month.month) }}</strong>
           <span class="summary-pill income">Einnahmen {{ month.summary.total_income|eur }}</span>
           <span class="summary-pill expense">Ausgaben {{ month.summary.total_expenses|eur }}</span>
           <span class="summary-pill">Saldo {{ month.summary.net_cash_flow|eur }}</span>
+          <button type="button" class="btn-secondary sankey-toggle-btn">
+            {% if month.is_current_month %}Sankey ausblenden{% else %}Sankey anzeigen{% endif %}
+          </button>
         </summary>
-        <div class="sankey-container">
+        <div class="sankey-container" {% if not month.is_current_month %}hidden{% endif %}>
           <div class="sankey-chart month-sankey" data-sankey='{{ month.sankey | tojson }}'></div>
         </div>
         <div class="table-wrap">
@@ -89,7 +95,7 @@
                     {% for category in categories %}
                     {% if (tx.amount >= 0 and category.type == 'income') or (tx.amount < 0 and category.type == 'expense') or tx.category_id == category.id %}
                     <option value="{{ category.id }}" data-color="{{ category.color or '' }}" {% if tx.category_id == category.id %}selected{% endif %}>
-                      {{ category.name }} ({% if category.type == 'income' %}Einnahmen{% else %}Ausgaben{% endif %}{% if not category.active %}, inaktiv{% endif %})
+                      {{ category.name }} ({% if category.type == 'income' %}Einnahmen{% else %}Ausgaben{% endif %})
                     </option>
                     {% endif %}
                     {% endfor %}
@@ -139,24 +145,8 @@
   </details>
   {% endfor %}
 </section>
-{% if has_transactions %}
-<aside class="sticky-save-bar">
-  <span id="unsaved-indicator" class="unsaved-indicator">Ungespeicherte Änderungen: 0</span>
-  <div class="actions">
-    <button id="discard-staged-btn" class="btn-secondary">Änderungen verwerfen</button>
-    <button id="save-staged-btn" class="btn-primary">Änderungen speichern</button>
-  </div>
-</aside>
-{% endif %}
-<div id="decision-modal" class="decision-backdrop" hidden>
-  <div class="decision-modal">
-    <h3 id="decision-title">Ungespeicherte Änderungen</h3>
-    <p id="decision-message"></p>
-    <div id="decision-actions" class="decision-actions"></div>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/transactions.js"></script>
+<script src="/static/js/transactions.js?v=20260320-15"></script>
 {% endblock %}

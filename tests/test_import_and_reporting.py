@@ -237,6 +237,7 @@ def test_apply_rules_to_existing_only_updates_uncategorized():
 def test_build_planning_dataset_uses_splits_and_returns_overview():
     conn = _conn()
     now = "2026-03-18T00:00:00+00:00"
+    salary_id = conn.execute("SELECT id FROM categories WHERE name = 'Gehalt'").fetchone()["id"]
     food_id = conn.execute("SELECT id FROM categories WHERE name = 'Lebensmittel'").fetchone()["id"]
     rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Miete'").fetchone()["id"]
 
@@ -258,7 +259,7 @@ def test_build_planning_dataset_uses_splits_and_returns_overview():
         VALUES (?, NULL, ?, 'EUR', NULL, ?, NULL, NULL, ?, ?, ?, ?, '{}', ?, ?)
         """,
         [
-            ("2026-01-10", 3000.0, "Salary", None, 0, "plan-1", import_job_id, now, now),
+            ("2026-01-10", 3000.0, "Salary", salary_id, 0, "plan-1", import_job_id, now, now),
             ("2026-01-15", -100.0, "Split Expense", None, 0, "plan-2", import_job_id, now, now),
             ("2026-02-03", -80.0, "Rent", rent_id, 0, "plan-3", import_job_id, now, now),
             ("2026-02-12", -40.0, "Excluded", food_id, 1, "plan-4", import_job_id, now, now),
@@ -298,3 +299,66 @@ def test_build_planning_dataset_uses_splits_and_returns_overview():
     assert categories["Lebensmittel"]["total_expenses"] == 30.0
     assert categories["Miete"]["total_expenses"] == 80.0
     assert categories["Ohne Kategorie"]["total_expenses"] == 70.0
+
+    income_stacked = payload["income_stacked_bar"]
+    assert income_stacked["months"] == ["2026-01", "2026-02"]
+    income_series = {row["category"]: row for row in income_stacked["series"]}
+    assert income_series["Gehalt"]["values"] == [3000.0, 0.0]
+
+    yearly_avg = payload["yearly_average_sankey"]
+    assert len(yearly_avg) == 1
+    assert yearly_avg[0]["year"] == 2026
+    assert yearly_avg[0]["months_covered"] == 2
+    links = {(row["source"], row["target"]): row["value"] for row in yearly_avg[0]["sankey"]["links"]}
+    assert links[("Gehalt", "Net")] == 1500.0
+    assert links[("Net", "Lebensmittel")] == 15.0
+    assert links[("Net", "Miete")] == 40.0
+    assert links[("Net", "Ohne Kategorie")] == 35.0
+    assert links[("Net", "Savings")] == 1410.0
+
+
+def test_build_planning_dataset_yearly_average_sankey_multiple_years():
+    conn = _conn()
+    now = "2026-03-18T00:00:00+00:00"
+    salary_id = conn.execute("SELECT id FROM categories WHERE name = 'Gehalt'").fetchone()["id"]
+    rent_id = conn.execute("SELECT id FROM categories WHERE name = 'Miete'").fetchone()["id"]
+
+    conn.execute(
+        """
+        INSERT INTO import_jobs(filename, column_mapping_json, row_count, new_row_count, duplicate_row_count, failed_row_count, imported_at)
+        VALUES ('planning-years.csv', '{}', 4, 4, 0, 0, ?)
+        """,
+        (now,),
+    )
+    import_job_id = conn.execute("SELECT id FROM import_jobs ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    conn.executemany(
+        """
+        INSERT INTO transactions(
+            booking_date, value_date, amount, currency, counterparty_name, description,
+            raw_text, memo, category_id, excluded, dedupe_key, import_job_id, raw_data_json,
+            created_at, updated_at
+        )
+        VALUES (?, NULL, ?, 'EUR', NULL, ?, NULL, NULL, ?, ?, ?, ?, '{}', ?, ?)
+        """,
+        [
+            ("2025-01-03", 1000.0, "Salary 2025", salary_id, 0, "plan-y1", import_job_id, now, now),
+            ("2025-01-10", -400.0, "Rent 2025", rent_id, 0, "plan-y2", import_job_id, now, now),
+            ("2026-03-03", 3000.0, "Salary 2026", salary_id, 0, "plan-y3", import_job_id, now, now),
+            ("2026-03-10", -1200.0, "Rent 2026", rent_id, 0, "plan-y4", import_job_id, now, now),
+        ],
+    )
+    conn.commit()
+
+    payload = build_planning_dataset(conn, top_n_categories=6)
+    yearly_avg = payload["yearly_average_sankey"]
+    assert [row["year"] for row in yearly_avg] == [2026, 2025]
+
+    links_2026 = {(row["source"], row["target"]): row["value"] for row in yearly_avg[0]["sankey"]["links"]}
+    assert links_2026[("Gehalt", "Net")] == 3000.0
+    assert links_2026[("Net", "Miete")] == 1200.0
+    assert links_2026[("Net", "Savings")] == 1800.0
+
+    links_2025 = {(row["source"], row["target"]): row["value"] for row in yearly_avg[1]["sankey"]["links"]}
+    assert links_2025[("Gehalt", "Net")] == 1000.0
+    assert links_2025[("Net", "Miete")] == 400.0
+    assert links_2025[("Net", "Savings")] == 600.0

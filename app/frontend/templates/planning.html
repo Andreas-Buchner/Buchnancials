@@ -45,8 +45,20 @@
     <div id="planning-cashflow-chart" class="sankey-chart"></div>
   </div>
 </section>
+
+<section class="panel">
+  <h3>Monatliche Einnahmen nach Kategorie</h3>
+  <div class="sankey-container planning-chart-container">
+    <div id="planning-income-stacked-chart" class="sankey-chart"></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h3>Ø-Monat pro Jahr (Sankey)</h3>
+  <div id="planning-yearly-average-sankey-grid" class="planning-yearly-sankey-grid"></div>
+</section>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/planning.js"></script>
+<script src="/static/js/planning.js?v=20260320-15"></script>
 {% endblock %}

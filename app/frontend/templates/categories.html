@@ -8,7 +8,7 @@
       <h3>Ausgabenkategorien</h3>
       <div class="stack-inline">
         <input type="text" id="new-expense-category-name" placeholder="Neue Ausgabenkategorie" />
-        <input type="color" id="new-expense-category-color" value="#b88f7b" />
+        <input type="color" id="new-expense-category-color" value="#7f0000" />
         <button id="create-expense-category-btn" class="btn-primary">Kategorie anlegen</button>
       </div>
     </div>
@@ -16,7 +16,7 @@
       <h3>Einnahmekategorien</h3>
       <div class="stack-inline">
         <input type="text" id="new-income-category-name" placeholder="Neue Einnahmekategorie" />
-        <input type="color" id="new-income-category-color" value="#6d97ad" />
+        <input type="color" id="new-income-category-color" value="#0b6e4f" />
         <button id="create-income-category-btn" class="btn-primary">Kategorie anlegen</button>
       </div>
     </div>
@@ -32,8 +32,7 @@
           <tr>
             <th>Name</th>
             <th>Farbe</th>
-            <th>Aktiv</th>
-            <th>Aktion</th>
+            <th>Aktionen</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -46,8 +45,7 @@
           <tr>
             <th>Name</th>
             <th>Farbe</th>
-            <th>Aktiv</th>
-            <th>Aktion</th>
+            <th>Aktionen</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -58,5 +56,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/categories.js"></script>
+<script src="/static/js/categories.js?v=20260320-5"></script>
 {% endblock %}
