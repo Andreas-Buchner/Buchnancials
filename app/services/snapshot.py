@@ -1,5 +1,4 @@
 import os
-import shutil
 import sqlite3
 import tempfile
 from datetime import datetime
@@ -20,6 +19,33 @@ REQUIRED_TABLES = {
 
 class SnapshotError(ValueError):
     pass
+
+
+def _copy_sqlite_database(source_path: Path, target_path: Path) -> None:
+    source_conn: sqlite3.Connection | None = None
+    target_conn: sqlite3.Connection | None = None
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        source_conn = sqlite3.connect(str(source_path), timeout=10)
+        target_conn = sqlite3.connect(str(target_path), timeout=10)
+        source_conn.backup(target_conn, pages=100, sleep=0.1)
+        target_conn.commit()
+    except sqlite3.Error as exc:
+        raise SnapshotError(
+            "Snapshot konnte nicht in die laufende Datenbank übernommen werden. "
+            "Bitte schließe andere geoeffnete Buchnancials-Fenster und versuche es erneut."
+        ) from exc
+    finally:
+        if target_conn is not None:
+            try:
+                target_conn.close()
+            except Exception:
+                pass
+        if source_conn is not None:
+            try:
+                source_conn.close()
+            except Exception:
+                pass
 
 
 def _validate_snapshot_file(path: Path) -> None:
@@ -75,9 +101,9 @@ def import_snapshot_bytes(
         backup_name = None
         if db_path.exists():
             backup_name = f"app-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
-            shutil.copy2(db_path, target_backup_dir / backup_name)
+            _copy_sqlite_database(db_path, target_backup_dir / backup_name)
 
-        os.replace(temp_path, db_path)
+        _copy_sqlite_database(temp_path, db_path)
 
         with get_connection(db_path) as conn:
             init_db(conn)
